@@ -1,0 +1,4 @@
+uv init
+uv add fastapi uvicorn pydantic
+
+uv run uvicorn src.app:app --reload
