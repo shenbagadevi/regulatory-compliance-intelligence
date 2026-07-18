@@ -17,6 +17,6 @@ for i, doc in enumerate(results, start=1):
     print("=" * 80)
 
 
-# how to run retrieval process
+# how to run test process
 
-# uv run python test_retrieval.py
+# uv run python -m tests.test_vector_search

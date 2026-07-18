@@ -1,35 +1,25 @@
 import os
 
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGVector
+from core.config import (
+    COLLECTION_NAME,
+    DB_CONNECTION,
+    EMBEDDING_MODEL,
+    DB_CONNECTION_FTS,
+)
+import psycopg
 
 # Load environment variables
-load_dotenv()
-
-
-# PostgreSQL Connection String
-DB_CONNECTION = (
-    f"postgresql+psycopg://"
-    f"{os.getenv('DB_USER')}:"
-    f"{os.getenv('DB_PASSWORD')}@"
-    f"{os.getenv('DB_HOST')}:"
-    f"{os.getenv('DB_PORT')}/"
-    f"{os.getenv('DB_NAME')}"
-)
-
-# print("DB Connection String", DB_CONNECTION)
-
-
-# Collection Name
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+# load_dotenv()
 
 
 def get_embeddings():
     """
     Returns OpenAI Embedding model.
     """
-    return OpenAIEmbeddings(model=os.getenv("EMBEDDING_MODEL"), dimensions=1536)
+    return OpenAIEmbeddings(model=EMBEDDING_MODEL, dimensions=1536)
 
 
 def get_vector_store(pre_delete_collection: bool = False):
@@ -46,3 +36,12 @@ def get_vector_store(pre_delete_collection: bool = False):
     )
 
     return vector_store
+
+
+def get_connection():
+    """
+    Returns a PostgreSQL connection.
+    Used for Full-Text Search and other SQL queries.
+    """
+
+    return psycopg.connect(DB_CONNECTION_FTS)
