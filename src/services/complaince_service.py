@@ -12,7 +12,7 @@ from src.schemas.compliance_response import UploadResponse, ComplianceResponse, 
 import logging, shutil, uuid
 from fastapi import FastAPI, UploadFile, HTTPException
 from pathlib import Path
-from src.config.config import AppConfig
+from src.core.config import AppConfig
 import os
 
 # Configure application logger
