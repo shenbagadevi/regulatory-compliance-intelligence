@@ -1,4 +1,4 @@
-from services.query_service import query_service
+from src.services.query_service import query_service
 
 # question = "What are RBI Gold Loan Guidelines?"
 # question = "What are the current RBI guidelines for Gold Loan?"

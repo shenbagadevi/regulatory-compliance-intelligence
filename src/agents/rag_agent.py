@@ -1,6 +1,6 @@
 from langchain.agents import create_agent
-from tools.tools import compliance_retriever_tool
-from core.config import OPENAI_MODEL
+from src.tools.tools import compliance_retriever_tool
+from src.core.config import OPENAI_MODEL
 import os
 
 rag_agent = create_agent(

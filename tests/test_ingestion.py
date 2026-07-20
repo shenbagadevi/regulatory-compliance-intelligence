@@ -3,7 +3,7 @@ Test program for ingestion process
 
 """
 
-from ingestion.ingestion import ingest
+from src.ingestion.ingestion import ingest
 
 chunks = ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
 

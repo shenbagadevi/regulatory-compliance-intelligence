@@ -1,6 +1,6 @@
 from pathlib import Path
-from ingestion.ingestion import ingest
-from core.config import DATA_DIR
+from src.ingestion.ingestion import ingest
+from src.core.config import DATA_DIR
 
 # DATA_DIR = Path("data")
 DATA_DIR = Path(DATA_DIR)

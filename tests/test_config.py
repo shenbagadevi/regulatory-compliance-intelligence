@@ -1,4 +1,4 @@
-from core.config import (
+from src.core.config import (
     OPENAI_MODEL,
     CHUNK_SIZE,
     CHUNK_OVERLAP,

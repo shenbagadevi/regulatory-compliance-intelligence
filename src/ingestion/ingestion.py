@@ -2,8 +2,8 @@ import os
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from core.db import get_vector_store
-from core.config import CHUNK_SIZE, CHUNK_OVERLAP
+from src.core.db import get_vector_store
+from src.core.config import CHUNK_SIZE, CHUNK_OVERLAP
 
 
 def load_pdf(pdf_path):
@@ -162,4 +162,4 @@ def ingest(pdf_path):
 
 
 # test to run the ingestion part
-# uv run /ingestion/ingestion.py
+# uv run tests/ingestion/ingestion.py

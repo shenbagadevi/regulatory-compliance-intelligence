@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from services.upload_service import upload_service
+from src.services.upload_service import upload_service
 
 
 class MockUploadFile:

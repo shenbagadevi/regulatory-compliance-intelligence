@@ -1,4 +1,4 @@
-from agents.rag_agent import ask_compliance_agent
+from src.agents.rag_agent import ask_compliance_agent
 
 
 def query_service(question: str) -> str:

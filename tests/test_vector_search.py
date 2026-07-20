@@ -1,4 +1,4 @@
-from tools.tools import vector_search
+from src.tools.tools import vector_search
 
 results = vector_search("What are the KYC requirements?")
 

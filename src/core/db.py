@@ -3,7 +3,7 @@ import os
 # from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGVector
-from core.config import (
+from src.core.config import (
     COLLECTION_NAME,
     DB_CONNECTION,
     EMBEDDING_MODEL,

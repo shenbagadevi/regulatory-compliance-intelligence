@@ -1,9 +1,9 @@
 from langchain_core.documents import Document
-from core.db import get_vector_store, get_connection
-import psycopg
 from collections import defaultdict
 from langchain_core.tools import tool
-from core.config import VECTOR_SEARCH_K, KEYWORD_SEARCH_K, FINAL_SEARCH_K
+from src.core.config import VECTOR_SEARCH_K, KEYWORD_SEARCH_K, FINAL_SEARCH_K
+from src.core.db import get_vector_store, get_connection
+import psycopg
 
 
 def vector_search(query: str, k: int = 5):

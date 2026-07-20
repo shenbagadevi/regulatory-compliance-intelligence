@@ -1,4 +1,4 @@
-from tools.tools import hybrid_search
+from src.tools.tools import hybrid_search
 
 query = "RBI gold loan"
 

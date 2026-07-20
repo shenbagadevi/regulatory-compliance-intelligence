@@ -1,4 +1,4 @@
-from tools.tools import keyword_search
+from src.tools.tools import keyword_search
 
 docs = keyword_search("gold loan")
 
