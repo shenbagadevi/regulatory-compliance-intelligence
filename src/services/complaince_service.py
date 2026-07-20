@@ -13,6 +13,7 @@ import logging, shutil, uuid
 from fastapi import FastAPI, UploadFile, HTTPException
 from pathlib import Path
 from src.config.config import AppConfig
+import os
 
 # Configure application logger
 logger = logging.getLogger(__name__)
@@ -42,10 +43,12 @@ class ComplianceService:
         if not file.filename:
             raise HTTPException(400, "No file selected.")
         extension = Path(file.filename).suffix.lower()
+
         if extension not in AppConfig.ALLOWED_FILE_EXTENSIONS:
             raise HTTPException(400, "Only PDF documents are allowed.")
         AppConfig.UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
-        file_path = AppConfig.UPLOAD_DIRECTORY
+
+        file_path = os.path.join(AppConfig.UPLOAD_DIRECTORY, file.filename)
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
