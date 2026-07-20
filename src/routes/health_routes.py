@@ -4,7 +4,7 @@ Health check routes.
 
 from fastapi import APIRouter
 
-from src.config.config import AppConfig
+from src.core.config import AppConfig
 from src.schemas.compliance_response import HealthResponse
 
 router = APIRouter(tags=["Health"])

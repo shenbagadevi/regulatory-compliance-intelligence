@@ -17,4 +17,5 @@ dependencies = [
     "pydantic>=2.13.4",
     "python-multipart>=0.0.32",
     "uvicorn>=0.51.0",
+    "streamlit>=1.59.2",
 ]

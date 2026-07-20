@@ -1,12 +1,14 @@
 import os
 
+import re
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from src.core.db import get_vector_store
+from src.core.database import get_vector_store
 from src.core.config import CHUNK_SIZE, CHUNK_OVERLAP
+from src.schemas.compliance_response import UploadResponse, ComplianceResponse, Citation
 
 
-def load_pdf(pdf_path):
+def load_pdf(file_name, pdf_path):
     """
     Loads the PDF document.
 
@@ -19,20 +21,36 @@ def load_pdf(pdf_path):
 
     try:
 
+        current_section = "N/A"
+        current_regulation = "General"
+        current_document_type = "General"
+
         loader = PyPDFLoader(pdf_path)
 
         docs = loader.load()
 
         #    # 2 metdata enrichment
-        #    for doc in docs:
-        #        doc.metadata.update(
-        #            {
-        #                "source": file_path,
-        #                "document_extension": "pdf",
-        #                "page": doc.metadata.get("page"),
-        #                "last_updated": os.path.getmtime(file_path),
-        #            }
-        #        )
+        for doc in docs:
+
+            metadata = extract_section_metadata(doc.page_content)
+
+            if metadata["section"] != "N/A":
+                current_section = metadata["section"]
+                current_regulation = metadata["regulation_type"]
+                current_document_type = metadata["document_type"]
+
+            doc.metadata.update(
+                {
+                    "document": file_name,
+                    "section": current_section,
+                    "regulation_type": current_regulation,
+                    "document_type": current_document_type,
+                    "source": pdf_path,
+                    "document_extension": "pdf",
+                    "page": doc.metadata.get("page"),
+                    "last_updated": os.path.getmtime(pdf_path),
+                }
+            )
         # print(docs)
         print(f"Document Loaded Successfully")
         print(f"Total Pages : {len(docs)}")
@@ -69,6 +87,121 @@ def split_documents(documents):
         raise
 
 
+import re
+
+
+def extract_section_metadata(text: str) -> dict:
+    """
+    Extract section information from page text.
+
+    Example:
+        ## SECTION 4: KYC & AML
+
+    Returns:
+    {
+        "section": "SECTION 4: KYC & AML",
+        "regulation_type": "RBI / PMLA",
+        "document_type": "Guidelines"
+    }
+    """
+
+    match = re.search(
+        r"##\s*SECTION\s+(\d+)\s*:\s*(.+)",
+        text,
+        re.IGNORECASE,
+    )
+
+    if not match:
+        return {
+            "section": "N/A",
+            "regulation_type": "General",
+            "document_type": "General",
+        }
+
+    section_no = match.group(1)
+    section_title = match.group(2).strip()
+
+    # section = f"SECTION {section_no}: {section_title}"
+    section = f"SECTION {section_no}:"
+
+    title = section_title.upper()
+
+    # ------------------------
+    # Regulation Type
+    # ------------------------
+
+    if "RBI" in title:
+        regulation = "RBI"
+
+    elif "SEBI" in title:
+        regulation = "SEBI"
+
+    elif "BASEL" in title:
+        regulation = "Basel III"
+
+    elif "AML" in title or "KYC" in title:
+        regulation = "RBI / PMLA"
+
+    elif "SARFAESI" in title:
+        regulation = "SARFAESI"
+
+    elif "IBC" in title:
+        regulation = "IBC"
+
+    else:
+        regulation = "General"
+
+    # ------------------------
+    # Document Type
+    # ------------------------
+
+    if "GUIDELINE" in title:
+        document_type = "Guideline"
+
+    elif "REGULATION" in title:
+        document_type = "Regulation"
+
+    elif "FRAMEWORK" in title:
+        document_type = "Framework"
+
+    elif "POLICY" in title:
+        document_type = "Policy"
+
+    elif "CAPITAL" in title:
+        document_type = "Capital Regulation"
+
+    elif "AML" in title or "KYC" in title:
+        document_type = "Compliance"
+
+    else:
+        document_type = "General"
+
+    return {
+        "section": section,
+        "regulation_type": regulation,
+        "document_type": document_type,
+    }
+
+
+def extract_regulation_type(text: str):
+
+    name = text.upper()
+
+    if "RBI" in name:
+        return "RBI"
+
+    if "SEBI" in name:
+        return "SEBI"
+
+    if "PMLA" in name:
+        return "PMLA"
+
+    if "FATF" in name:
+        return "FATF"
+
+    return "General"
+
+
 def enrich_metadata(chunks, pdf_path):
     """
     Adds custom metadata to every chunk.
@@ -92,9 +225,11 @@ def enrich_metadata(chunks, pdf_path):
             # Placeholder values.
             # These can later be extracted automatically
             # from headings inside regulatory documents.
-            chunk.metadata["section_number"] = "Unknown"
+            # chunk.metadata["section_number"] = extract_section(chunk.page_content)
 
-            chunk.metadata["regulation_type"] = "General"
+            # chunk.metadata["regulation_type"] = extract_regulation_type(
+            #    chunk.page_content
+            # )
 
         return chunks
     except Exception as e:
@@ -122,7 +257,7 @@ def store_chunks(chunks):
         raise
 
 
-def ingest(pdf_path):
+def ingest(file_name, pdf_path):
     """
     Complete ingestion pipeline.
 
@@ -132,13 +267,15 @@ def ingest(pdf_path):
         3. Add metadata
 
     Args:
+        file_name (str)
         pdf_path (str)
+
 
     Returns:
         list: Chunked documents
     """
     try:
-        documents = load_pdf(pdf_path)
+        documents = load_pdf(file_name, pdf_path)
 
         chunks = split_documents(documents)
 
@@ -152,10 +289,24 @@ def ingest(pdf_path):
 
         print("Document Ingestion Completed Successfully")
 
-        return chunks
+        # return chunks
+
+        return UploadResponse(
+            status="SUCCESS",
+            message=f"Document uploaded successfully.{len(chunks)} Chunks created.",
+            document_name=file_name,
+            document_path=str(pdf_path),
+            ready_for_ingestion=True,
+        )
     except Exception as e:
         print(f"ingestion.ingest failed :{e}")
-        raise
+        return UploadResponse(
+            status="Failed",
+            message=f"Document uploaded failed.{e}",
+            document_name=file_name,
+            document_path=str(pdf_path),
+            ready_for_ingestion=False,
+        )
 
 
 # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")

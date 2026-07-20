@@ -2,7 +2,7 @@ from langchain_core.documents import Document
 from collections import defaultdict
 from langchain_core.tools import tool
 from src.core.config import VECTOR_SEARCH_K, KEYWORD_SEARCH_K, FINAL_SEARCH_K
-from src.core.db import get_vector_store, get_connection
+from src.core.database import get_vector_store, get_connection
 import psycopg
 
 
@@ -20,7 +20,8 @@ def vector_search(query: str, k: int = 5):
     try:
         vector_store = get_vector_store(pre_delete_collection=False)
 
-        results = vector_store.similarity_search(query=query, k=k)
+        # results = vector_store.similarity_search(query=query, k=k)
+        results = vector_store.similarity_search_with_score(query=query, k=k)
 
         # print("vector search ended :", len(results))
 
@@ -116,7 +117,19 @@ def hybrid_search(
     """
     try:
         # Perform Vector Search
-        vector_docs = vector_search(query=query, k=vector_k)
+        # vector_docs = vector_search(query=query, k=vector_k)
+        vector_results = vector_search(query=query, k=vector_k)
+
+        vector_docs = []
+        distance_map = {}
+
+        for doc, score in vector_results:
+            vector_docs.append(doc)
+
+        # Use chunk_id because it is unique
+        chunk_id = doc.metadata.get("chunk_id")
+
+        distance_map[chunk_id] = score
 
         # Perform Keyword Search
         keyword_docs = keyword_search(query=query, limit=keyword_k)
@@ -125,6 +138,10 @@ def hybrid_search(
         ranked_docs = rrf_rank(vector_docs=vector_docs, keyword_docs=keyword_docs)
 
         # print(f"After RRF : {len(ranked_docs)}")
+
+        for doc in ranked_docs:
+            chunk_id = doc.metadata.get("chunk_id")
+            doc.metadata["vector_distance"] = distance_map.get(chunk_id)
 
         # Return top documents
         return ranked_docs[:final_k]
