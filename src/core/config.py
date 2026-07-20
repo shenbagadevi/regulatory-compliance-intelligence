@@ -76,3 +76,18 @@ missing = [key for key, value in REQUIRED_SETTINGS.items() if not value]
 
 if missing:
     raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+class AppConfig:
+    """
+    Centralized application configuration.
+    """
+
+    PROJECT_NAME: str = "Regulatory Compliance Intelligence System"
+
+    API_VERSION: str = "v1"
+
+    UPLOAD_DIRECTORY: Path = Path("data/regulatory_documents")
+
+    ALLOWED_FILE_EXTENSIONS = {".pdf"}
+
+    MAX_FILE_SIZE_BYTES: int = 20 * 1024 * 1024
