@@ -112,7 +112,7 @@ class ComplianceService:
         confidence = self.calculate_confidence(docs)
         answer = ask_compliance_agent(query)
         # print("answer 1 here  : ", answer1)
-        confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
+        # confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
         return ComplianceResponse(
             query=query,
             answer=answer,
@@ -163,19 +163,38 @@ class ComplianceService:
         return citations
 
     def calculate_confidence(self, docs):
+        """
+        Calculate confidence based on:
+        1. Average vector similarity
+        2. Number of retrieved documents
+        """
+
         if not docs:
             return 0.0
         distances = []
+
         for doc in docs:
             distance = doc.metadata.get("vector_distance")
+
             if distance is not None:
                 distances.append(distance)
 
+        # If keyword search returned documents but no vector scores
         if not distances:
-            return 0.0
+            return 0.50
+
         avg_distance = sum(distances) / len(distances)
-        confidence = max(0.0, 1 - avg_distance)
-        return round(confidence, 2)
+
+        # Convert distance into similarity
+        similarity_score = 1 / (1 + avg_distance)
+
+        # Retrieval completeness
+        retrieval_score = len(docs) / FINAL_SEARCH_K
+
+        # Weighted confidence
+        confidence = similarity_score * 0.8 + retrieval_score * 0.2
+
+        return round(min(confidence, 1.0), 2)
 
 
 compliance_service = ComplianceService()
