@@ -34,6 +34,21 @@ class ComplianceService:
     FastAPI route handlers lightweight.
     """
 
+    SMALL_TALK = {
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "how are you",
+        "who are you",
+        "what can you do",
+        "thank you",
+        "thanks",
+        "bye",
+    }
+
     async def upload_document(self, file: UploadFile) -> UploadResponse:
         """
         Upload and store a regulatory document.
@@ -81,25 +96,17 @@ class ComplianceService:
         )"""
 
     async def process_query(self, query: str) -> ComplianceResponse:
-        """
-        Process a compliance question.
-        Retrieve relevant clauses and generate response.
-        """
         logger.info("Received compliance query.")
-
-        # TODO:
-        #
-        # loader = PyPDFLoader(...)
-        #
-        # chunk_documents(...)
-        #
-        # embeddings(...)
-        #
-        # hybrid_search(...)
-        #
-        # llm.generate(...)
-        #
-        # langsmith tracing
+        if self.is_small_talk(query):
+            return ComplianceResponse(
+                query=query,
+                answer=self.get_small_talk_response(query),
+                rule_summary=[],
+                citations=[],
+                confidence_score=1.0,
+                disclaimer="",
+                langsmith_trace_id=str(uuid.uuid4()),
+            )
 
         docs = hybrid_search(
             query=query,
@@ -107,29 +114,21 @@ class ComplianceService:
             keyword_k=KEYWORD_SEARCH_K,
             final_k=FINAL_SEARCH_K,
         )
-
         citations = self.build_citations(docs)
-        confidence = self.calculate_confidence(docs)
-        answer = ask_compliance_agent(query)
-        # print("answer 1 here  : ", answer1)
         confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
+        answer = ask_compliance_agent(query)
         return ComplianceResponse(
             query=query,
             answer=answer,
             citations=citations,
-            rule_summary=[
-                "High-risk customers must undergo Enhanced Due Diligence (EDD).",
-                "Source of funds must be verified for high-risk customers.",
-                "Senior management approval is required before onboarding PEPs.",
-                "High-risk customer KYC must be updated every two years.",
-            ],
+            rule_summary=[],
             confidence_score=confidence,
             disclaimer=(
-                "This response was generated using an AI-powered Retrieval-Augmented "
-                "Generation (RAG) system based on the uploaded regulatory documents. "
-                "Although supporting citations are provided, users should verify the "
-                "information against the latest official regulatory publications before "
-                "making legal, regulatory, or business decisions."
+                "This response was generated using an AI-powered "
+                "Retrieval-Augmented Generation (RAG) system based on "
+                "the uploaded regulatory documents. "
+                "Users should verify information against official "
+                "regulatory publications before making decisions."
             ),
             langsmith_trace_id=str(uuid.uuid4()),
         )
@@ -176,6 +175,40 @@ class ComplianceService:
         avg_distance = sum(distances) / len(distances)
         confidence = max(0.0, 1 - avg_distance)
         return round(confidence, 2)
+
+    def is_small_talk(self, query: str) -> bool:
+        query = query.lower().strip()
+        return query in self.SMALL_TALK
+
+    def get_small_talk_response(self, query: str):
+        query = query.lower().strip()
+        if "hi" in query or "hello" in query or "hey" in query:
+            return "Hello! How can I assist you with regulatory compliance today?"
+
+        if "how are you" in query:
+            return "I'm doing well, thank you! How can I help you with regulatory compliance?"
+
+        if "who are you" in query:
+            return (
+                "I am an AI-powered Regulatory Compliance Assistant that helps "
+                "answer questions using the uploaded regulatory documents."
+            )
+
+        if "what can you do" in query:
+            return (
+                "I can answer regulatory compliance questions, summarize "
+                "requirements, and provide supporting document citations."
+            )
+
+        if "thank" in query:
+            return (
+                "You're welcome! Let me know if you have another compliance question."
+            )
+
+        if "bye" in query:
+            return "Goodbye! Have a great day."
+
+        return "Hello! How can I help you today?"
 
 
 compliance_service = ComplianceService()

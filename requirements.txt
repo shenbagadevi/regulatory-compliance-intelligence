@@ -18,3 +18,4 @@ streamlit run src/ui/compliance_portal.py
 # Activate venv In Windows Machine
 .venv\Scripts\activate.bat
 
+
