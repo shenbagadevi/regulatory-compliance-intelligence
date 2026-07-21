@@ -8,8 +8,6 @@ from src.schemas.compliance_request import ComplianceRequest
 from src.schemas.compliance_response import ComplianceResponse
 from src.services.complaince_service import compliance_service
 
-from src.services.query_service import query_service
-
 router = APIRouter(tags=["Compliance"])
 
 

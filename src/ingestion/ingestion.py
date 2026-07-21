@@ -219,8 +219,8 @@ def enrich_metadata(chunks, pdf_path):
         for index, chunk in enumerate(chunks):
 
             chunk.metadata["document_name"] = document_name
-
-            chunk.metadata["chunk_id"] = index + 1
+            # fix unique chunk-id
+            chunk.metadata["chunk_id"] = f"{document_name}_{index+1}"
 
             # Placeholder values.
             # These can later be extracted automatically
