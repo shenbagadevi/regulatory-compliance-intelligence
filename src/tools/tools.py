@@ -36,27 +36,33 @@ def keyword_search(query: str, limit: int = 5):
     Performs PostgreSQL Full-Text Search on document chunks.
     """
     try:
+        # Improved query to perform keyword search better with rank
         sql = """
-            SELECT
-                id,
-                document,
-                cmetadata
-            FROM langchain_pg_embedding
-            WHERE to_tsvector('english', document)
-                @@ plainto_tsquery(%s)
-            LIMIT %s;
+                SELECT
+                    document,
+                    cmetadata,
+                    ts_rank(
+                        to_tsvector('english', document),
+                        plainto_tsquery(%s)
+                    ) AS rank
+                FROM langchain_pg_embedding
+                WHERE
+                    to_tsvector('english', document)
+                    @@ plainto_tsquery(%s)
+                ORDER BY rank DESC
+                LIMIT %s;           
         """
 
         conn = get_connection()
 
         with conn.cursor() as cursor:
-            cursor.execute(sql, (query, limit))
+            cursor.execute(sql, (query, query, limit))
             rows = cursor.fetchall()
 
         documents = []
 
         for row in rows:
-            documents.append(Document(page_content=row[1], metadata=row[2]))
+            documents.append(Document(page_content=row[0], metadata=row[1]))
 
         return documents
     except Exception as e:
@@ -76,13 +82,14 @@ def rrf_rank(vector_docs, keyword_docs, k=60):
 
         # Vector Search
         for rank, doc in enumerate(vector_docs, start=1):
-            key = doc.page_content
+            # RRF should use unique chunk ID instead of page_content
+            key = doc.metadata.get("chunk_id")
             scores[key] += 1 / (k + rank)
             doc_lookup[key] = doc
 
         # Keyword Search
         for rank, doc in enumerate(keyword_docs, start=1):
-            key = doc.page_content
+            key = doc.metadata.get("chunk_id")
             scores[key] += 1 / (k + rank)
             doc_lookup[key] = doc
 
@@ -125,11 +132,10 @@ def hybrid_search(
 
         for doc, score in vector_results:
             vector_docs.append(doc)
-
-        # Use chunk_id because it is unique
-        chunk_id = doc.metadata.get("chunk_id")
-
-        distance_map[chunk_id] = score
+            # Use chunk_id because it is unique
+            # comment: retrieve/stores not only the last documents distance
+            chunk_id = doc.metadata.get("chunk_id")
+            distance_map[chunk_id] = score
 
         # Perform Keyword Search
         keyword_docs = keyword_search(query=query, limit=keyword_k)
