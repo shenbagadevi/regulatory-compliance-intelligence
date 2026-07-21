@@ -12,7 +12,14 @@ from src.schemas.compliance_response import UploadResponse, ComplianceResponse, 
 import logging, shutil, uuid
 from fastapi import FastAPI, UploadFile, HTTPException
 from pathlib import Path
-from src.config.config import AppConfig
+
+# from src.core.config import AppConfig
+from src.core.config import AppConfig
+from src.ingestion.ingestion import ingest
+from src.agents.rag_agent import ask_compliance_agent
+from src.tools.tools import hybrid_search
+from src.core.config import FINAL_SEARCH_K, KEYWORD_SEARCH_K, VECTOR_SEARCH_K
+
 import os
 
 # Configure application logger
@@ -57,15 +64,21 @@ class ComplianceService:
 
             raise HTTPException(500, "Unable to save uploaded document.") from ex
 
+        # print(file.filename, " --", file_path)
+        # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
+        # print("before calling ingestion method")
+        UploadResponse = ingest(file.filename, file_path)
         logger.info("Document saved successfully.")
+        return UploadResponse
 
+        """
         return UploadResponse(
             status="SUCCESS",
             message="Document uploaded successfully.",
             document_name=file.filename,
             document_path=str(file_path),
             ready_for_ingestion=True,
-        )
+        )"""
 
     async def process_query(self, query: str) -> ComplianceResponse:
         """
@@ -87,25 +100,82 @@ class ComplianceService:
         # llm.generate(...)
         #
         # langsmith tracing
+
+        docs = hybrid_search(
+            query=query,
+            vector_k=VECTOR_SEARCH_K,
+            keyword_k=KEYWORD_SEARCH_K,
+            final_k=FINAL_SEARCH_K,
+        )
+
+        citations = self.build_citations(docs)
+        confidence = self.calculate_confidence(docs)
+        answer = ask_compliance_agent(query)
+        # print("answer 1 here  : ", answer1)
+        confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
         return ComplianceResponse(
             query=query,
-            answer="RAG pipeline integration is pending.",
-            citations=[
-                Citation(
-                    document="N/A",
-                    section="N/A",
-                    page=1,
-                )
+            answer=answer,
+            citations=citations,
+            rule_summary=[
+                "High-risk customers must undergo Enhanced Due Diligence (EDD).",
+                "Source of funds must be verified for high-risk customers.",
+                "Senior management approval is required before onboarding PEPs.",
+                "High-risk customer KYC must be updated every two years.",
             ],
-            rule_summary=["No compliance rules available."],
-            confidence_score=0.0,
+            confidence_score=confidence,
             disclaimer=(
-                "This response is generated from a placeholder "
-                "implementation. Verify regulatory information "
-                "before making compliance decisions."
+                "This response was generated using an AI-powered Retrieval-Augmented "
+                "Generation (RAG) system based on the uploaded regulatory documents. "
+                "Although supporting citations are provided, users should verify the "
+                "information against the latest official regulatory publications before "
+                "making legal, regulatory, or business decisions."
             ),
             langsmith_trace_id=str(uuid.uuid4()),
         )
+
+    def build_citations(self, docs):
+        citations = []
+        seen = set()
+
+        for doc in docs:
+            metadata = doc.metadata
+
+            key = (
+                metadata.get("document"),
+                metadata.get("section"),
+                metadata.get("page"),
+            )
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            citations.append(
+                Citation(
+                    document=metadata.get("document", "N/A"),
+                    section=metadata.get("section", "N/A"),
+                    page=metadata.get("page", 0) + 1,  # convert to 1-based page
+                )
+            )
+
+        return citations
+
+    def calculate_confidence(self, docs):
+        if not docs:
+            return 0.0
+        distances = []
+        for doc in docs:
+            distance = doc.metadata.get("vector_distance")
+            if distance is not None:
+                distances.append(distance)
+
+        if not distances:
+            return 0.0
+        avg_distance = sum(distances) / len(distances)
+        confidence = max(0.0, 1 - avg_distance)
+        return round(confidence, 2)
 
 
 compliance_service = ComplianceService()

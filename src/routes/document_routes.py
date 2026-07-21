@@ -8,6 +8,9 @@ from src.services.complaince_service import compliance_service
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
+# localhost:8000/upload
+# localhost:8000/api/v1/documents/upload
+
 
 @router.post(
     "/upload",

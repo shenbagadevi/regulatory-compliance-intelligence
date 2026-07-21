@@ -8,6 +8,8 @@ from src.schemas.compliance_request import ComplianceRequest
 from src.schemas.compliance_response import ComplianceResponse
 from src.services.complaince_service import compliance_service
 
+from src.services.query_service import query_service
+
 router = APIRouter(tags=["Compliance"])
 
 
@@ -23,4 +25,7 @@ async def compliance_query(request: ComplianceRequest) -> ComplianceResponse:
     Process a compliance query.
     Returns: ComplianceResponse
     """
+
+    # print("Query :", request.query)
     return await compliance_service.process_query(request.query)
+    # return await query_service(request.query)
