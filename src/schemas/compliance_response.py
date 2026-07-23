@@ -102,7 +102,7 @@ class ComplianceResponse(BaseModel):
             Trace identifier for debugging and monitoring.
     """
 
-    query: str
+    query: str | None = None
 
     answer: str
 
