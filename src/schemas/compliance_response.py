@@ -41,12 +41,47 @@ class Citation(BaseModel):
     )
 
 
+class RetrievedChunk(BaseModel):
+    """
+    Represents a single document chunk returned by the retrieval layer.
+
+    This model is exchanged between retrieval tools and the LLM.
+    It contains both the chunk content and its associated metadata.
+    """
+
+    content: str
+
+    document: str
+
+    section: str
+
+    page: int
+
+    vector_distance: float | None = None
+
+
+class RetrievalResult(BaseModel):
+    """
+    Represents the output returned by a retrieval tool.
+
+    The retrieval layer computes the confidence score based on
+    retrieval quality and returns the retrieved chunks for
+    answer generation.
+    """
+
+    chunks: List[RetrievedChunk]
+
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Retrieval confidence score.",
+    )
+
+
 class ComplianceResponse(BaseModel):
     """
     Response model for compliance queries.
-
-        query:
-            User's original question.
 
         answer:
             Grounded answer generated from retrieved documents.

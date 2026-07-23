@@ -53,9 +53,15 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 # Search Configuration
 # -------------------------------------------------
 
-VECTOR_SEARCH_K = int(os.getenv("VECTOR_SEARCH_K", "5"))
-KEYWORD_SEARCH_K = int(os.getenv("KEYWORD_SEARCH_K", "5"))
+VECTOR_SEARCH_K = int(os.getenv("VECTOR_SEARCH_K", "8"))
+KEYWORD_SEARCH_K = int(os.getenv("KEYWORD_SEARCH_K", "8"))
 FINAL_SEARCH_K = int(os.getenv("FINAL_SEARCH_K", "5"))
+
+MIN_SIMILARITY_SCORE = 0.45
+
+MAX_CONTEXT_CHUNKS = 5
+
+ENABLE_METADATA_FILTER = True
 
 # -------------------------------------------------
 # File Storage
@@ -76,6 +82,7 @@ missing = [key for key, value in REQUIRED_SETTINGS.items() if not value]
 
 if missing:
     raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
 
 class AppConfig:
     """

@@ -1,30 +1,27 @@
 from langchain.agents import create_agent
-from src.tools.tools import compliance_retriever_tool
+from src.tools.tools import (
+    hybrid_retriever_tool,
+    keyword_retriever_tool,
+    semantic_retriever_tool,
+)
 from src.core.config import OPENAI_MODEL
+from src.agents.prompt_template import SYS_PROMPT
+from src.schemas.compliance_response import ComplianceResponse
 import os
 
 rag_agent = create_agent(
     model=OPENAI_MODEL,
-    tools=[compliance_retriever_tool],
-    system_prompt="""
-You are an expert Regulatory Compliance Assistant.
-
-You MUST use the compliance_retriever_tool for every user question before generating an answer.
-
-Answer ONLY using the information returned by the tool.
-
-Do not rely on your own knowledge.
-
-If the answer is not available in the retrieved documents, respond exactly:
-
-'I couldn't find this information in the provided documents.'
-
-Do not invent or assume facts.
-""",
+    tools=[
+        semantic_retriever_tool,
+        keyword_retriever_tool,
+        hybrid_retriever_tool,
+    ],
+    system_prompt=SYS_PROMPT,
+    response_format=ComplianceResponse,
 )
 
 
-def ask_compliance_agent(question: str) -> str:
+def ask_compliance_agent(question: str) -> ComplianceResponse:
     response = rag_agent.invoke(
         {
             "messages": [
@@ -33,7 +30,19 @@ def ask_compliance_agent(question: str) -> str:
                     "content": question,
                 }
             ]
-        }
+        },
+        config={
+            "run_name": "ComplianceAgent",
+            "tags": [
+                "rag",
+                "compliance",
+                "retrieval",
+            ],
+            "metadata": {
+                "application": "RegulatoryComplianceSystem",
+                "version": "1.0",
+            },
+        },
     )
 
-    return response["messages"][-1].content
+    return response["structured_response"]

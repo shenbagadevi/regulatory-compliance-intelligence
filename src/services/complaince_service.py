@@ -19,6 +19,7 @@ from src.ingestion.ingestion import ingest
 from src.agents.rag_agent import ask_compliance_agent
 from src.tools.tools import hybrid_search
 from src.core.config import FINAL_SEARCH_K, KEYWORD_SEARCH_K, VECTOR_SEARCH_K
+from src.agents.query_router import route_query
 
 import os
 
@@ -86,53 +87,33 @@ class ComplianceService:
         Retrieve relevant clauses and generate response.
         """
         logger.info("Received compliance query.")
+        handled, message = route_query(query)
 
-        # TODO:
-        #
-        # loader = PyPDFLoader(...)
-        #
-        # chunk_documents(...)
-        #
-        # embeddings(...)
-        #
-        # hybrid_search(...)
-        #
-        # llm.generate(...)
-        #
-        # langsmith tracing
+        if handled:
+            return ComplianceResponse(
+                query=query,
+                answer=message,
+                citations=[],
+                rule_summary=[],
+                confidence_score=1.0,
+                disclaimer="",
+                langsmith_trace_id="",
+            )
 
-        docs = hybrid_search(
-            query=query,
-            vector_k=VECTOR_SEARCH_K,
-            keyword_k=KEYWORD_SEARCH_K,
-            final_k=FINAL_SEARCH_K,
-        )
+        response = ask_compliance_agent(query)
+        response.query = query
 
-        citations = self.build_citations(docs)
-        confidence = self.calculate_confidence(docs)
-        answer = ask_compliance_agent(query)
-        # print("answer 1 here  : ", answer1)
-        # confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
-        return ComplianceResponse(
-            query=query,
-            answer=answer,
-            citations=citations,
-            rule_summary=[
-                "High-risk customers must undergo Enhanced Due Diligence (EDD).",
-                "Source of funds must be verified for high-risk customers.",
-                "Senior management approval is required before onboarding PEPs.",
-                "High-risk customer KYC must be updated every two years.",
-            ],
-            confidence_score=confidence,
-            disclaimer=(
-                "This response was generated using an AI-powered Retrieval-Augmented "
-                "Generation (RAG) system based on the uploaded regulatory documents. "
-                "Although supporting citations are provided, users should verify the "
-                "information against the latest official regulatory publications before "
-                "making legal, regulatory, or business decisions."
-            ),
-            langsmith_trace_id=str(uuid.uuid4()),
-        )
+        response.langsmith_trace_id = str(uuid.uuid4())
+
+        if not response.disclaimer:
+            response.disclaimer = (
+                "This response was generated using an AI-powered "
+                "Retrieval-Augmented Generation (RAG) system based on "
+                "the uploaded regulatory documents. Please verify the "
+                "information against the latest official regulatory publications."
+            )
+
+        return response
 
     def build_citations(self, docs):
         citations = []
@@ -161,40 +142,6 @@ class ComplianceService:
             )
 
         return citations
-
-    def calculate_confidence(self, docs):
-        """
-        Calculate confidence based on:
-        1. Average vector similarity
-        2. Number of retrieved documents
-        """
-
-        if not docs:
-            return 0.0
-        distances = []
-
-        for doc in docs:
-            distance = doc.metadata.get("vector_distance")
-
-            if distance is not None:
-                distances.append(distance)
-
-        # If keyword search returned documents but no vector scores
-        if not distances:
-            return 0.50
-
-        avg_distance = sum(distances) / len(distances)
-
-        # Convert distance into similarity
-        similarity_score = 1 / (1 + avg_distance)
-
-        # Retrieval completeness
-        retrieval_score = len(docs) / FINAL_SEARCH_K
-
-        # Weighted confidence
-        confidence = similarity_score * 0.8 + retrieval_score * 0.2
-
-        return round(min(confidence, 1.0), 2)
 
 
 compliance_service = ComplianceService()
