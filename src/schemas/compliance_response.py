@@ -7,6 +7,20 @@ Regulatory Compliance Intelligence System API.
 
 from typing import List
 from pydantic import BaseModel, Field
+from langchain_core.documents import Document
+from typing import Any
+
+
+class ComplianceResponseLLM(BaseModel):
+    answer: str
+    rule_summary: list[str]
+
+
+class AgentResponse(BaseModel):
+
+    llm_response: ComplianceResponseLLM
+
+    source_documents: list[Document]
 
 
 class Citation(BaseModel):
@@ -39,6 +53,9 @@ class Citation(BaseModel):
         description="Page number in the source document.",
         examples=[1],
     )
+    regulation_type: str
+
+    version: str
 
 
 class RetrievedChunk(BaseModel):
@@ -77,6 +94,7 @@ class RetrievalResult(BaseModel):
         le=1.0,
         description="Retrieval confidence score.",
     )
+    source_documents: list[Any]
 
 
 class ComplianceResponse(BaseModel):
@@ -149,6 +167,10 @@ class UploadResponse(BaseModel):
     document_name: str
 
     document_path: str
+
+    total_chunks: int
+
+    version: str
 
     ready_for_ingestion: bool
 

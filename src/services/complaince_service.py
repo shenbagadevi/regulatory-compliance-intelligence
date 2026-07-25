@@ -16,11 +16,10 @@ from pathlib import Path
 # from src.core.config import AppConfig
 from src.core.config import AppConfig
 from src.ingestion.ingestion import ingest
-from src.agents.rag_agent import ask_compliance_agent
-from src.tools.tools import hybrid_search
-from src.core.config import FINAL_SEARCH_K, KEYWORD_SEARCH_K, VECTOR_SEARCH_K
+from src.agents.rag_agent import ask_compliance_agent, get_last_retrieved_documents
+from src.tools.tools import calculate_confidence
 from src.agents.query_router import route_query
-
+from src.schemas.retrieval_store import clear_documents
 import os
 
 # Configure application logger
@@ -68,9 +67,9 @@ class ComplianceService:
         # print(file.filename, " --", file_path)
         # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
         # print("before calling ingestion method")
-        UploadResponse = ingest(file.filename, file_path)
+        uploadResponse = ingest(file.filename, file_path)
         logger.info("Document saved successfully.")
-        return UploadResponse
+        return uploadResponse
 
         """
         return UploadResponse(
@@ -87,6 +86,7 @@ class ComplianceService:
         Retrieve relevant clauses and generate response.
         """
         logger.info("Received compliance query.")
+        clear_documents()
         handled, message = route_query(query)
 
         if handled:
@@ -100,48 +100,94 @@ class ComplianceService:
                 langsmith_trace_id="",
             )
 
+        # response = ask_compliance_agent(query)
+
         response = ask_compliance_agent(query)
-        response.query = query
+        docs = get_last_retrieved_documents()
+        # response = agent_response.llm_response
 
-        response.langsmith_trace_id = str(uuid.uuid4())
+        # docs = agent_response.source_documents
 
-        if not response.disclaimer:
-            response.disclaimer = (
-                "This response was generated using an AI-powered "
-                "Retrieval-Augmented Generation (RAG) system based on "
-                "the uploaded regulatory documents. Please verify the "
-                "information against the latest official regulatory publications."
+        return ComplianceResponse(
+            query=query,
+            answer=response.answer,
+            rule_summary=response.rule_summary,
+            citations=build_citations(docs),
+            confidence_score=calculate_confidence(docs),
+            disclaimer="This response was generated using an AI-powered "
+            "Retrieval-Augmented Generation (RAG) system based on "
+            "the uploaded regulatory documents. Please verify the "
+            "information against the latest official regulatory publications.",
+            langsmith_trace_id=str(uuid.uuid4()),
+        )
+        # print(query)
+        # print(response.citations)
+
+        # response.query = query
+        # docs = get_last_retrieved_documents()
+        # citations = build_citations(docs)
+        # print(response.rule_summary)
+        # print(response)
+        # print(citations)
+
+        # if docs:
+        #     confidence_score = calculate_confidence(docs)
+
+        # langsmith_trace_id = str(uuid.uuid4())
+
+        # if not response.disclaimer:
+        #     response.disclaimer = (
+        #         "This response was generated using an AI-powered "
+        #         "Retrieval-Augmented Generation (RAG) system based on "
+        #         "the uploaded regulatory documents. Please verify the "
+        #         "information against the latest official regulatory publications."
+        #     )
+        # complainceResponse = ComplianceResponse(
+        #     query=query,
+        #     answer=response.answer,
+        #     rule_summary=response.rule_summary,
+        #     citations=build_citations(docs),
+        #     confidence_score=calculate_confidence(docs),
+        #     disclaimer=(
+        #         "This response was generated using an AI-powered "
+        #         "Retrieval-Augmented Generation (RAG) system based on "
+        #         "the uploaded regulatory documents. Please verify the "
+        #         "information against the latest official regulatory publications."
+        #     ),
+        #     langsmith_trace_id=str(uuid.uuid4()),
+        # )
+        # return complainceResponse
+
+
+def build_citations(docs):
+    citations = []
+    seen = set()
+
+    for doc in docs:
+        metadata = doc.metadata
+
+        key = (
+            metadata.get("document"),
+            metadata.get("section"),
+            metadata.get("page"),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        citations.append(
+            Citation(
+                document=metadata.get("document", "N/A"),
+                section=metadata.get("section", "N/A"),
+                page=metadata.get("page", 0) + 1,  # convert to 1-based page
+                regulation_type=metadata.get("regulation_type", ""),
+                version=metadata.get("version", "1.0"),
             )
+        )
 
-        return response
-
-    def build_citations(self, docs):
-        citations = []
-        seen = set()
-
-        for doc in docs:
-            metadata = doc.metadata
-
-            key = (
-                metadata.get("document"),
-                metadata.get("section"),
-                metadata.get("page"),
-            )
-
-            if key in seen:
-                continue
-
-            seen.add(key)
-
-            citations.append(
-                Citation(
-                    document=metadata.get("document", "N/A"),
-                    section=metadata.get("section", "N/A"),
-                    page=metadata.get("page", 0) + 1,  # convert to 1-based page
-                )
-            )
-
-        return citations
+    return citations
 
 
 compliance_service = ComplianceService()

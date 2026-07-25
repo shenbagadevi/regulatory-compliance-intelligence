@@ -1,18 +1,14 @@
 from langchain_core.documents import Document
 from collections import defaultdict
 from langchain_core.tools import tool
-from src.core.config import (
-    VECTOR_SEARCH_K,
-    KEYWORD_SEARCH_K,
-    FINAL_SEARCH_K,
-    MIN_SIMILARITY_SCORE,
-)
+import re
+from src.schemas.retrieval_store import set_documents
+from src.core.config import *
 from src.schemas.compliance_response import (
     RetrievalResult,
     RetrievedChunk,
 )
 from src.core.database import get_vector_store, get_connection
-import psycopg
 
 
 def vector_search(query: str, k: int = VECTOR_SEARCH_K):
@@ -26,8 +22,18 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
         vector_store = get_vector_store(pre_delete_collection=False)
 
         # results = vector_store.similarity_search(query=query, k=k)
-        results = vector_store.similarity_search_with_score(query=query, k=k)
+        # results = vector_store.similarity_search_with_score(query=query, k=k)
+        filters = extract_metadata_filters(query)
 
+        if filters:
+
+            results = vector_store.similarity_search_with_score(
+                query=query, k=k, filter=filters
+            )
+
+        else:
+
+            results = vector_store.similarity_search_with_score(query=query, k=k)
         # print("vector search ended :", len(results))
 
         return results
@@ -46,16 +52,40 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
                 SELECT
                     document,
                     cmetadata,
+
                     ts_rank(
-                        to_tsvector('english', document),
+                        to_tsvector(
+                            'english',
+                            document ||
+                            ' ' ||
+                            COALESCE(cmetadata->>'section','') ||
+                            ' ' ||
+                            COALESCE(cmetadata->>'regulation_type','') ||
+                            ' ' ||
+                            COALESCE(cmetadata->>'document_name','')
+                        ),
                         plainto_tsquery(%s)
                     ) AS rank
+
                 FROM langchain_pg_embedding
+
                 WHERE
-                    to_tsvector('english', document)
-                    @@ plainto_tsquery(%s)
+
+                to_tsvector(
+                    'english',
+                    document ||
+                    ' ' ||
+                    COALESCE(cmetadata->>'section','') ||
+                    ' ' ||
+                    COALESCE(cmetadata->>'regulation_type','') ||
+                    ' ' ||
+                    COALESCE(cmetadata->>'document_name','')
+                )
+                @@ plainto_tsquery(%s)
+
                 ORDER BY rank DESC
-                LIMIT %s;           
+
+                LIMIT %s;          
         """
 
         conn = get_connection()
@@ -147,7 +177,14 @@ def hybrid_search(
 
         # Merge & Rank using RRF
         ranked_docs = rrf_rank(vector_docs=vector_docs, keyword_docs=keyword_docs)
-
+        ranked_docs = sorted(
+            ranked_docs,
+            key=lambda doc: (
+                doc.metadata.get("source_date", ""),
+                doc.metadata.get("version", ""),
+            ),
+            reverse=True,
+        )
         # print(f"After RRF : {len(ranked_docs)}")
         filtered = []
         for doc in ranked_docs:
@@ -173,41 +210,25 @@ def hybrid_search(
         raise
 
 
-# def build_context(docs):
-#     """
-#     Converts retrieved documents into LLM context.
-#     """
+def extract_metadata_filters(query: str):
 
-#     if not docs:
+    filters = {}
 
-#         return (
-#             "No relevant information was found " "in the uploaded regulatory documents."
-#         )
+    query_upper = query.upper()
 
-#     chunks = []
+    if "RBI" in query_upper:
+        filters["regulation_type"] = "RBI"
 
-#     for index, doc in enumerate(docs, start=1):
+    elif "SEBI" in query_upper:
+        filters["regulation_type"] = "SEBI"
 
-#         chunks.append(f"""
-#                         Chunk {index}
+    elif "BASEL" in query_upper:
+        filters["regulation_type"] = "Basel III"
 
-#                         Document:
-#                         {doc.metadata.get("document")}
+    elif "AML" in query_upper:
+        filters["regulation_type"] = "RBI / PMLA"
 
-#                         Section:
-#                         {doc.metadata.get("section")}
-
-#                         Page:
-#                         {doc.metadata.get("page",0)+1}
-
-#                         Regulation:
-#                         {doc.metadata.get("regulation_type")}
-
-#                         Content:
-#                         {doc.page_content}
-#                 """)
-
-#     return "\n".join(chunks)
+    return filters
 
 
 @tool
@@ -215,12 +236,9 @@ def semantic_retriever_tool(
     query: str,
 ):
     """
-    Use for conceptual compliance questions.
-    Examples
-    Explain Basel III
-    Explain KYC
-    What is EDD?
-    Describe AML monitoring
+    Use when the answer depends on concepts,
+    definitions, purposes, comparisons,
+    or explanations.
     """
 
     results = vector_search(query)
@@ -233,6 +251,7 @@ def semantic_retriever_tool(
 
         docs.append(doc)
 
+    set_documents(docs)
     return build_retrieval_result(docs)
 
 
@@ -241,17 +260,14 @@ def keyword_retriever_tool(
     query: str,
 ):
     """
-    Use when users mention
-    RBI Circular
-    Section
-    Clause
-    Regulation Number
-    Notification
-    Policy Number
+    Use when the question contains exact
+    regulation names, sections,
+    clauses, circular numbers,
+    or document titles.
     """
 
     docs = keyword_search(query)
-
+    set_documents(docs)
     return build_retrieval_result(docs)
 
 
@@ -260,18 +276,12 @@ def hybrid_retriever_tool(
     query: str,
 ):
     """
-    Use for complex compliance questions requiring
-    both semantic understanding and exact keyword matching.
-
-    Examples
-    Compare RBI and SEBI KYC
-    Gold Loan LTV Guidelines
-    Approval hierarchy
-    Basel capital requirements
+    Use when both exact terminology and conceptual understanding are required,
+    or when another retrieval tool returned insufficient information.
     """
 
     docs = hybrid_search(query)
-
+    set_documents(docs)
     return build_retrieval_result(docs)
 
 
@@ -286,8 +296,10 @@ def build_retrieval_result(docs) -> RetrievalResult:
     for doc in docs:
         chunks.append(
             RetrievedChunk(
-                content=doc.page_content,
-                document=doc.metadata.get("document", ""),
+                content=doc.page_content[:MAX_CONTEXT],
+                document=doc.metadata.get(
+                    "document_name", doc.metadata.get("document", "")
+                ),
                 section=doc.metadata.get("section", ""),
                 page=doc.metadata.get("page", 0) + 1,
                 vector_distance=doc.metadata.get("vector_distance"),
@@ -297,6 +309,7 @@ def build_retrieval_result(docs) -> RetrievalResult:
     return RetrievalResult(
         chunks=chunks,
         confidence=calculate_confidence(docs),
+        source_documents=docs,
     )
 
 
@@ -330,7 +343,14 @@ def calculate_confidence(docs):
     retrieval_score = len(docs) / FINAL_SEARCH_K
 
     # Weighted confidence
-    confidence = similarity_score * 0.8 + retrieval_score * 0.2
+    # confidence = similarity_score * 0.8 + retrieval_score * 0.2
+    coverage_score = min(len(docs), 2) / 2
+
+    metadata_score = sum(
+        1 for doc in docs if doc.metadata.get("section") != "N/A"
+    ) / len(docs)
+
+    confidence = similarity_score * 0.60 + coverage_score * 0.20 + metadata_score * 0.20
 
     return round(min(confidence, 1.0), 2)
 

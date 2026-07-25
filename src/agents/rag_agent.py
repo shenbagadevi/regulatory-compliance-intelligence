@@ -4,10 +4,16 @@ from src.tools.tools import (
     keyword_retriever_tool,
     semantic_retriever_tool,
 )
+from src.schemas.retrieval_store import get_documents
+
 from src.core.config import OPENAI_MODEL
 from src.agents.prompt_template import SYS_PROMPT
-from src.schemas.compliance_response import ComplianceResponse
-import os
+from src.schemas.compliance_response import ComplianceResponseLLM, AgentResponse
+
+
+def get_last_retrieved_documents():
+    return get_documents()
+
 
 rag_agent = create_agent(
     model=OPENAI_MODEL,
@@ -17,11 +23,11 @@ rag_agent = create_agent(
         hybrid_retriever_tool,
     ],
     system_prompt=SYS_PROMPT,
-    response_format=ComplianceResponse,
+    response_format=ComplianceResponseLLM,
 )
 
 
-def ask_compliance_agent(question: str) -> ComplianceResponse:
+def ask_compliance_agent(question: str) -> ComplianceResponseLLM:
     response = rag_agent.invoke(
         {
             "messages": [
@@ -41,8 +47,12 @@ def ask_compliance_agent(question: str) -> ComplianceResponse:
             "metadata": {
                 "application": "RegulatoryComplianceSystem",
                 "version": "1.0",
+                "query": question,
+                "query_length": len(question),
             },
         },
     )
-
+    # tool_messages = response["messages"]
     return response["structured_response"]
+    # source_documents=source_documents,
+    # )

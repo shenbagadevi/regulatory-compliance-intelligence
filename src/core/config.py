@@ -45,8 +45,8 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "regulatory_docs")
 # Document Chunking
 # -------------------------------------------------
 
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP"))
 
 
 # -------------------------------------------------
@@ -55,13 +55,19 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
 
 VECTOR_SEARCH_K = int(os.getenv("VECTOR_SEARCH_K", "8"))
 KEYWORD_SEARCH_K = int(os.getenv("KEYWORD_SEARCH_K", "8"))
-FINAL_SEARCH_K = int(os.getenv("FINAL_SEARCH_K", "5"))
+FINAL_SEARCH_K = int(os.getenv("FINAL_SEARCH_K", "3"))
 
 MIN_SIMILARITY_SCORE = 0.45
-
+MAX_CONTEXT = 300
 MAX_CONTEXT_CHUNKS = 5
 
 ENABLE_METADATA_FILTER = True
+
+DOCUMENT_VERSION = "1.0"
+
+DEFAULT_REGULATION = "General"
+
+DEFAULT_CONFIDENCE = 0.50
 
 # -------------------------------------------------
 # File Storage
