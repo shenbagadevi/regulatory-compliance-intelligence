@@ -16,10 +16,10 @@ from pathlib import Path
 # from src.core.config import AppConfig
 from src.core.config import AppConfig
 from src.ingestion.ingestion import ingest
-from src.agents.rag_agent import ask_compliance_agent
-from src.tools.tools import hybrid_search
-from src.core.config import FINAL_SEARCH_K, KEYWORD_SEARCH_K, VECTOR_SEARCH_K
-
+from src.agents.rag_agent import ask_compliance_agent, get_last_retrieved_documents
+from src.tools.tools import calculate_confidence
+from src.agents.query_router import route_query
+from src.schemas.retrieval_store import clear_documents
 import os
 
 # Configure application logger
@@ -67,9 +67,9 @@ class ComplianceService:
         # print(file.filename, " --", file_path)
         # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
         # print("before calling ingestion method")
-        UploadResponse = ingest(file.filename, file_path)
+        uploadResponse = ingest(file.filename, file_path)
         logger.info("Document saved successfully.")
-        return UploadResponse
+        return uploadResponse
 
         """
         return UploadResponse(
@@ -86,115 +86,108 @@ class ComplianceService:
         Retrieve relevant clauses and generate response.
         """
         logger.info("Received compliance query.")
+        clear_documents()
+        handled, message = route_query(query)
 
-        # TODO:
-        #
-        # loader = PyPDFLoader(...)
-        #
-        # chunk_documents(...)
-        #
-        # embeddings(...)
-        #
-        # hybrid_search(...)
-        #
-        # llm.generate(...)
-        #
-        # langsmith tracing
+        if handled:
+            return ComplianceResponse(
+                query=query,
+                answer=message,
+                citations=[],
+                rule_summary=[],
+                confidence_score=1.0,
+                disclaimer="",
+                langsmith_trace_id="",
+            )
 
-        docs = hybrid_search(
-            query=query,
-            vector_k=VECTOR_SEARCH_K,
-            keyword_k=KEYWORD_SEARCH_K,
-            final_k=FINAL_SEARCH_K,
-        )
+        # response = ask_compliance_agent(query)
 
-        citations = self.build_citations(docs)
-        confidence = self.calculate_confidence(docs)
-        answer = ask_compliance_agent(query)
-        # print("answer 1 here  : ", answer1)
-        # confidence = min(len(docs) / FINAL_SEARCH_K, 1.0)
+        response = ask_compliance_agent(query)
+        docs = get_last_retrieved_documents()
+        # response = agent_response.llm_response
+
+        # docs = agent_response.source_documents
+
         return ComplianceResponse(
             query=query,
-            answer=answer,
-            citations=citations,
-            rule_summary=[
-                "High-risk customers must undergo Enhanced Due Diligence (EDD).",
-                "Source of funds must be verified for high-risk customers.",
-                "Senior management approval is required before onboarding PEPs.",
-                "High-risk customer KYC must be updated every two years.",
-            ],
-            confidence_score=confidence,
-            disclaimer=(
-                "This response was generated using an AI-powered Retrieval-Augmented "
-                "Generation (RAG) system based on the uploaded regulatory documents. "
-                "Although supporting citations are provided, users should verify the "
-                "information against the latest official regulatory publications before "
-                "making legal, regulatory, or business decisions."
-            ),
+            answer=response.answer,
+            rule_summary=response.rule_summary,
+            citations=build_citations(docs),
+            confidence_score=calculate_confidence(docs),
+            disclaimer="This response was generated using an AI-powered "
+            "Retrieval-Augmented Generation (RAG) system based on "
+            "the uploaded regulatory documents. Please verify the "
+            "information against the latest official regulatory publications.",
             langsmith_trace_id=str(uuid.uuid4()),
         )
+        # print(query)
+        # print(response.citations)
 
-    def build_citations(self, docs):
-        citations = []
-        seen = set()
+        # response.query = query
+        # docs = get_last_retrieved_documents()
+        # citations = build_citations(docs)
+        # print(response.rule_summary)
+        # print(response)
+        # print(citations)
 
-        for doc in docs:
-            metadata = doc.metadata
+        # if docs:
+        #     confidence_score = calculate_confidence(docs)
 
-            key = (
-                metadata.get("document"),
-                metadata.get("section"),
-                metadata.get("page"),
+        # langsmith_trace_id = str(uuid.uuid4())
+
+        # if not response.disclaimer:
+        #     response.disclaimer = (
+        #         "This response was generated using an AI-powered "
+        #         "Retrieval-Augmented Generation (RAG) system based on "
+        #         "the uploaded regulatory documents. Please verify the "
+        #         "information against the latest official regulatory publications."
+        #     )
+        # complainceResponse = ComplianceResponse(
+        #     query=query,
+        #     answer=response.answer,
+        #     rule_summary=response.rule_summary,
+        #     citations=build_citations(docs),
+        #     confidence_score=calculate_confidence(docs),
+        #     disclaimer=(
+        #         "This response was generated using an AI-powered "
+        #         "Retrieval-Augmented Generation (RAG) system based on "
+        #         "the uploaded regulatory documents. Please verify the "
+        #         "information against the latest official regulatory publications."
+        #     ),
+        #     langsmith_trace_id=str(uuid.uuid4()),
+        # )
+        # return complainceResponse
+
+
+def build_citations(docs):
+    citations = []
+    seen = set()
+
+    for doc in docs:
+        metadata = doc.metadata
+
+        key = (
+            metadata.get("document"),
+            metadata.get("section"),
+            metadata.get("page"),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        citations.append(
+            Citation(
+                document=metadata.get("document", "N/A"),
+                section=metadata.get("section", "N/A"),
+                page=metadata.get("page", 0) + 1,  # convert to 1-based page
+                regulation_type=metadata.get("regulation_type", ""),
+                version=metadata.get("version", "1.0"),
             )
+        )
 
-            if key in seen:
-                continue
-
-            seen.add(key)
-
-            citations.append(
-                Citation(
-                    document=metadata.get("document", "N/A"),
-                    section=metadata.get("section", "N/A"),
-                    page=metadata.get("page", 0) + 1,  # convert to 1-based page
-                )
-            )
-
-        return citations
-
-    def calculate_confidence(self, docs):
-        """
-        Calculate confidence based on:
-        1. Average vector similarity
-        2. Number of retrieved documents
-        """
-
-        if not docs:
-            return 0.0
-        distances = []
-
-        for doc in docs:
-            distance = doc.metadata.get("vector_distance")
-
-            if distance is not None:
-                distances.append(distance)
-
-        # If keyword search returned documents but no vector scores
-        if not distances:
-            return 0.50
-
-        avg_distance = sum(distances) / len(distances)
-
-        # Convert distance into similarity
-        similarity_score = 1 / (1 + avg_distance)
-
-        # Retrieval completeness
-        retrieval_score = len(docs) / FINAL_SEARCH_K
-
-        # Weighted confidence
-        confidence = similarity_score * 0.8 + retrieval_score * 0.2
-
-        return round(min(confidence, 1.0), 2)
+    return citations
 
 
 compliance_service = ComplianceService()

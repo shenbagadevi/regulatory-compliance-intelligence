@@ -7,6 +7,20 @@ Regulatory Compliance Intelligence System API.
 
 from typing import List
 from pydantic import BaseModel, Field
+from langchain_core.documents import Document
+from typing import Any
+
+
+class ComplianceResponseLLM(BaseModel):
+    answer: str
+    rule_summary: list[str]
+
+
+class AgentResponse(BaseModel):
+
+    llm_response: ComplianceResponseLLM
+
+    source_documents: list[Document]
 
 
 class Citation(BaseModel):
@@ -39,14 +53,53 @@ class Citation(BaseModel):
         description="Page number in the source document.",
         examples=[1],
     )
+    regulation_type: str
+
+    version: str
+
+
+class RetrievedChunk(BaseModel):
+    """
+    Represents a single document chunk returned by the retrieval layer.
+
+    This model is exchanged between retrieval tools and the LLM.
+    It contains both the chunk content and its associated metadata.
+    """
+
+    content: str
+
+    document: str
+
+    section: str
+
+    page: int
+
+    vector_distance: float | None = None
+
+
+class RetrievalResult(BaseModel):
+    """
+    Represents the output returned by a retrieval tool.
+
+    The retrieval layer computes the confidence score based on
+    retrieval quality and returns the retrieved chunks for
+    answer generation.
+    """
+
+    chunks: List[RetrievedChunk]
+
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Retrieval confidence score.",
+    )
+    source_documents: list[Any]
 
 
 class ComplianceResponse(BaseModel):
     """
     Response model for compliance queries.
-
-        query:
-            User's original question.
 
         answer:
             Grounded answer generated from retrieved documents.
@@ -67,7 +120,7 @@ class ComplianceResponse(BaseModel):
             Trace identifier for debugging and monitoring.
     """
 
-    query: str
+    query: str | None = None
 
     answer: str
 
@@ -114,6 +167,10 @@ class UploadResponse(BaseModel):
     document_name: str
 
     document_path: str
+
+    total_chunks: int
+
+    version: str
 
     ready_for_ingestion: bool
 

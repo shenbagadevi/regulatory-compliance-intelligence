@@ -1,6 +1,8 @@
 import os
 
 import re
+import uuid
+from datetime import datetime
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.core.database import get_vector_store
@@ -216,11 +218,29 @@ def enrich_metadata(chunks, pdf_path):
     try:
         document_name = os.path.basename(pdf_path)
 
+        document_id = str(uuid.uuid4())
+
+        created_time = datetime.utcnow().isoformat()
+
+        source_date = (
+            datetime.fromtimestamp(os.path.getmtime(pdf_path)).date().isoformat()
+        )
+
+        version = "1.0"
+
         for index, chunk in enumerate(chunks):
 
-            chunk.metadata["document_name"] = document_name
-            # fix unique chunk-id
-            chunk.metadata["chunk_id"] = f"{document_name}_{index+1}"
+            chunk.metadata.update(
+                {
+                    "document_name": document_name,
+                    "document_id": document_id,
+                    "chunk_index": index,
+                    "chunk_id": f"{document_name}_{index+1}",
+                    "version": version,
+                    "source_date": source_date,
+                    "created_at": created_time,
+                }
+            )
 
             # Placeholder values.
             # These can later be extracted automatically
@@ -296,6 +316,8 @@ def ingest(file_name, pdf_path):
             message=f"Document uploaded successfully.{len(chunks)} Chunks created.",
             document_name=file_name,
             document_path=str(pdf_path),
+            total_chunks=len(chunks),
+            version="1.0",
             ready_for_ingestion=True,
         )
     except Exception as e:
@@ -305,6 +327,8 @@ def ingest(file_name, pdf_path):
             message=f"Document uploaded failed.{e}",
             document_name=file_name,
             document_path=str(pdf_path),
+            total_chunks=len(chunks),
+            version="1.0",
             ready_for_ingestion=False,
         )
 

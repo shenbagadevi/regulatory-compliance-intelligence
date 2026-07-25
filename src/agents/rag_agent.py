@@ -1,30 +1,33 @@
 from langchain.agents import create_agent
-from src.tools.tools import compliance_retriever_tool
+from src.tools.tools import (
+    hybrid_retriever_tool,
+    keyword_retriever_tool,
+    semantic_retriever_tool,
+)
+from src.schemas.retrieval_store import get_documents
+
 from src.core.config import OPENAI_MODEL
-import os
+from src.agents.prompt_template import SYS_PROMPT
+from src.schemas.compliance_response import ComplianceResponseLLM, AgentResponse
+
+
+def get_last_retrieved_documents():
+    return get_documents()
+
 
 rag_agent = create_agent(
     model=OPENAI_MODEL,
-    tools=[compliance_retriever_tool],
-    system_prompt="""
-You are an expert Regulatory Compliance Assistant.
-
-You MUST use the compliance_retriever_tool for every user question before generating an answer.
-
-Answer ONLY using the information returned by the tool.
-
-Do not rely on your own knowledge.
-
-If the answer is not available in the retrieved documents, respond exactly:
-
-'I couldn't find this information in the provided documents.'
-
-Do not invent or assume facts.
-""",
+    tools=[
+        semantic_retriever_tool,
+        keyword_retriever_tool,
+        hybrid_retriever_tool,
+    ],
+    system_prompt=SYS_PROMPT,
+    response_format=ComplianceResponseLLM,
 )
 
 
-def ask_compliance_agent(question: str) -> str:
+def ask_compliance_agent(question: str) -> ComplianceResponseLLM:
     response = rag_agent.invoke(
         {
             "messages": [
@@ -33,7 +36,23 @@ def ask_compliance_agent(question: str) -> str:
                     "content": question,
                 }
             ]
-        }
+        },
+        config={
+            "run_name": "ComplianceAgent",
+            "tags": [
+                "rag",
+                "compliance",
+                "retrieval",
+            ],
+            "metadata": {
+                "application": "RegulatoryComplianceSystem",
+                "version": "1.0",
+                "query": question,
+                "query_length": len(question),
+            },
+        },
     )
-
-    return response["messages"][-1].content
+    # tool_messages = response["messages"]
+    return response["structured_response"]
+    # source_documents=source_documents,
+    # )
