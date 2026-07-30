@@ -26,16 +26,22 @@ rag_agent = create_agent(
     response_format=ComplianceResponseLLM,
 )
 
+chat_history = []
+
 
 def ask_compliance_agent(question: str) -> ComplianceResponseLLM:
+    messages = chat_history.copy()
+
+    messages.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
+
     response = rag_agent.invoke(
         {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": question,
-                }
-            ]
+            "messages": messages,
         },
         config={
             "run_name": "ComplianceAgent",
@@ -52,7 +58,26 @@ def ask_compliance_agent(question: str) -> ComplianceResponseLLM:
             },
         },
     )
-    # tool_messages = response["messages"]
-    return response["structured_response"]
-    # source_documents=source_documents,
-    # )
+
+    structured_response = response["structured_response"]
+
+    # Save only the latest conversation
+    chat_history.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
+
+    chat_history.append(
+        {
+            "role": "assistant",
+            "content": structured_response.answer,
+        }
+    )
+
+    # Keep only the last 10 messages (5 user/assistant exchanges)
+    if len(chat_history) > 10:
+        del chat_history[:-10]
+
+    return structured_response

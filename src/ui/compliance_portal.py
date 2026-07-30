@@ -124,20 +124,20 @@ for message in st.session_state.messages:
 
             with st.expander(
                 "Rule Summary",
-                expanded=True,
+                expanded=False,
             ):
 
                 for rule in message["rule_summary"]:
                     st.write(f"✔ {rule}")
 
             confidence = message["confidence_score"]
+            if confidence > 0:
+                st.metric(
+                    "Confidence",
+                    f"{confidence * 100:.0f}%",
+                )
 
-            st.metric(
-                "Confidence",
-                f"{confidence * 100:.0f}%",
-            )
-
-            st.progress(confidence)
+                st.progress(confidence)
 
             with st.expander("Citations"):
 
@@ -199,7 +199,7 @@ if question:
 
             with st.expander(
                 "Rule Summary",
-                expanded=True,
+                expanded=False,
             ):
 
                 for rule in result["rule_summary"]:
