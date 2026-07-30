@@ -27,10 +27,10 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
         List[Tuple[Document, float]]: Retrieved documents with similarity scores.
     """
     try:
+
         logger.info(
-            "Starting semantic vector search. Query='%s', k=%d",
+            "Starting vector search. Query='%s'",
             query,
-            k,
         )
 
         vector_store = get_vector_store(pre_delete_collection=False)
@@ -38,10 +38,6 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
         filters = extract_metadata_filters(query)
 
         if filters:
-            logger.info(
-                "Applying metadata filters: %s",
-                filters,
-            )
 
             results = vector_store.similarity_search_with_score(
                 query=query,
@@ -83,9 +79,8 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
     try:
 
         logger.info(
-            "Starting keyword search. Query='%s', limit=%d",
+            "Starting keyword search. Query='%s'",
             query,
-            limit,
         )
 
         sql = """
@@ -129,8 +124,6 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
         """
 
         conn = get_connection()
-
-        logger.info("Database connection established.")
 
         with conn.cursor() as cursor:
 
@@ -195,13 +188,15 @@ def rrf_rank(vector_docs, keyword_docs, k=60):
     """
 
     try:
-
+        """
         logger.info(
             "Starting Reciprocal Rank Fusion. "
             "Vector documents=%d, Keyword documents=%d",
             len(vector_docs),
             len(keyword_docs),
         )
+        """
+        logger.info("Starting Reciprocal Rank Fusion. ")
 
         scores = defaultdict(float)
         doc_lookup = {}
@@ -317,22 +312,12 @@ def hybrid_search(
             limit=keyword_k,
         )
 
-        logger.info(
-            "Keyword search retrieved %d documents.",
-            len(keyword_docs),
-        )
-
         # -------------------------
         # Reciprocal Rank Fusion
         # -------------------------
         ranked_docs = rrf_rank(
             vector_docs=vector_docs,
             keyword_docs=keyword_docs,
-        )
-
-        logger.info(
-            "RRF produced %d ranked documents.",
-            len(ranked_docs),
         )
 
         # -------------------------
@@ -464,16 +449,9 @@ def semantic_retriever_tool(query: str):
 
             docs.append(doc)
 
-        logger.info(
-            "Semantic vector search returned %d documents.",
-            len(docs),
-        )
-
         set_documents(docs)
 
         retrieval_result = build_retrieval_result(docs)
-
-        logger.info("Semantic retriever completed successfully.")
 
         return retrieval_result
 
@@ -501,11 +479,6 @@ def keyword_retriever_tool(query: str):
 
         set_documents(docs)
 
-        logger.info(
-            "Keyword retriever returned %d documents.",
-            len(docs),
-        )
-
         return build_retrieval_result(docs)
 
     except Exception:
@@ -531,17 +504,7 @@ def hybrid_retriever_tool(query: str):
 
     try:
 
-        logger.info(
-            "Executing hybrid retriever tool. Query='%s'",
-            query,
-        )
-
         docs = hybrid_search(query)
-
-        logger.info(
-            "Hybrid search returned %d documents.",
-            len(docs),
-        )
 
         set_documents(docs)
 
@@ -571,11 +534,6 @@ def build_retrieval_result(docs) -> RetrievalResult:
     """
 
     try:
-
-        logger.info(
-            "Building retrieval result for %d documents.",
-            len(docs),
-        )
 
         chunks = []
 
@@ -609,12 +567,6 @@ def build_retrieval_result(docs) -> RetrievalResult:
             source_documents=docs,
         )
 
-        logger.info(
-            "Retrieval result created successfully. " "Chunks=%d, Confidence=%.2f",
-            len(chunks),
-            retrieval_result.confidence,
-        )
-
         return retrieval_result
 
     except Exception:
@@ -640,17 +592,9 @@ def calculate_confidence(docs) -> float:
 
     try:
 
-        logger.info(
-            "Calculating confidence score for %d documents.",
-            len(docs),
-        )
-
         if not docs:
-
-            logger.warning("No documents retrieved. Returning confidence score 0.0.")
-
+            # logger.warning("No documents retrieved. Returning confidence score 0.0.")
             return 0.0
-
         distances = []
 
         for doc in docs:
@@ -662,11 +606,6 @@ def calculate_confidence(docs) -> float:
 
         # Keyword search returned documents but no vector scores
         if not distances:
-
-            logger.info(
-                "No vector distances found. Returning default confidence score 0.50."
-            )
-
             return 0.50
 
         avg_distance = sum(distances) / len(distances)
@@ -690,7 +629,7 @@ def calculate_confidence(docs) -> float:
             min(confidence, 1.0),
             2,
         )
-
+        """
         logger.info(
             "Confidence calculated successfully. "
             "Similarity=%.3f, Coverage=%.3f, Metadata=%.3f, Final=%.2f",
@@ -699,6 +638,7 @@ def calculate_confidence(docs) -> float:
             metadata_score,
             confidence,
         )
+        """
 
         return confidence
 

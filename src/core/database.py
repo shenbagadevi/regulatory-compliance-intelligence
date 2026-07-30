@@ -23,14 +23,14 @@ def get_embeddings():
     Returns OpenAI Embedding model.
     """
     try:
-        logger.info("Initializing OpenAI embedding model.")
+        # logger.info("Initializing OpenAI embedding model.")
 
         embeddings = OpenAIEmbeddings(
             model=EMBEDDING_MODEL,
             dimensions=1536,
         )
 
-        logger.info("OpenAI embedding model initialized successfully.")
+        # logger.info("OpenAI embedding model initialized successfully.")
 
         return embeddings
 
@@ -44,12 +44,14 @@ def get_vector_store(pre_delete_collection: bool = False):
     Returns PGVector object.
     """
     try:
+        """
         logger.info(
             "Initializing PGVector. Collection=%s, PreDelete=%s",
             COLLECTION_NAME,
             pre_delete_collection,
         )
 
+        """
         vector_store = PGVector(
             embeddings=get_embeddings(),
             collection_name=COLLECTION_NAME,
@@ -58,7 +60,7 @@ def get_vector_store(pre_delete_collection: bool = False):
             pre_delete_collection=pre_delete_collection,
         )
 
-        logger.info("PGVector initialized successfully.")
+        # logger.info("PGVector initialized successfully.")
 
         return vector_store
 
@@ -73,11 +75,11 @@ def get_connection():
     Used for Full-Text Search and other SQL queries.
     """
     try:
-        logger.info("Creating PostgreSQL database connection.")
+        # logger.info("Creating PostgreSQL database connection.")
 
         connection = psycopg.connect(DB_CONNECTION_FTS)
 
-        logger.info("PostgreSQL connection established successfully.")
+        # logger.info("PostgreSQL connection established successfully.")
 
         return connection
 

@@ -17,7 +17,7 @@ class ComplianceRequest(BaseModel):
 
     query: str = Field(
         ...,
-        min_length=5,
+        # min_length=5,
         max_length=500,
         description="Compliance question to search in the regulatory knowledge base.",
         # examples=["What is the maximum LTV ratio for gold loans?"],
