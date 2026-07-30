@@ -268,11 +268,7 @@ def hybrid_search(
         )
 
         # Perform Vector Search
-        # vector_docs = vector_search(query=query, k=vector_k)
-        vector_results = vector_search(
-            query=query,
-            k=vector_k,
-        )
+        vector_results = vector_search(query=query, k=vector_k)
 
         vector_docs = []
         distance_map = {}
@@ -574,11 +570,9 @@ def calculate_confidence(docs):
 
             distance = doc.metadata.get("vector_distance")
 
-            if distance is not None:
-                distances.append(distance)
-
-        # If keyword search returned documents but no vector scores
-        if not distances:
+    # Weighted confidence
+    # confidence = similarity_score * 0.8 + retrieval_score * 0.2
+    coverage_score = min(len(docs), 2) / 2
 
             logger.info("No vector distances available. Returning default confidence.")
 
@@ -586,32 +580,3 @@ def calculate_confidence(docs):
 
         avg_distance = sum(distances) / len(distances)
 
-        similarity_score = 1 / (1 + avg_distance)
-
-        coverage_score = min(len(docs), 2) / 2
-
-        metadata_score = sum(
-            1 for doc in docs if doc.metadata.get("section") != "N/A"
-        ) / len(docs)
-
-        confidence = (
-            similarity_score * 0.60 + coverage_score * 0.20 + metadata_score * 0.20
-        )
-
-        confidence = round(
-            min(confidence, 1.0),
-            2,
-        )
-
-        logger.info(
-            "Confidence score calculated: %.2f",
-            confidence,
-        )
-
-        return confidence
-
-    except Exception:
-
-        logger.exception("tools.calculate_confidence failed.")
-
-        raise

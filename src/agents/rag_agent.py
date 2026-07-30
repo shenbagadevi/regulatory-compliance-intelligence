@@ -56,62 +56,58 @@ except Exception:
     logger.exception("Failed to initialize Compliance RAG Agent.")
     raise
 
+chat_history = []
+
 
 def ask_compliance_agent(question: str) -> ComplianceResponseLLM:
-    """
-    Invoke the Compliance RAG Agent.
-    """
+    messages = chat_history.copy()
 
-    try:
-        if not question or not question.strip():
-            raise ValueError("Question cannot be empty.")
+    messages.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
 
-        logger.info("Compliance query received.")
-        logger.debug("Question: %s", question)
-
-        response = rag_agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": question,
-                    }
-                ]
+    response = rag_agent.invoke(
+        {
+            "messages": messages,
+        },
+        config={
+            "run_name": "ComplianceAgent",
+            "tags": [
+                "rag",
+                "compliance",
+                "retrieval",
+            ],
+            "metadata": {
+                "application": "RegulatoryComplianceSystem",
+                "version": "1.0",
+                "query": question,
+                "query_length": len(question),
             },
-            config={
-                "run_name": "ComplianceAgent",
-                "tags": [
-                    "rag",
-                    "compliance",
-                    "retrieval",
-                ],
-                "metadata": {
-                    "application": "RegulatoryComplianceSystem",
-                    "version": "1.0",
-                    "query": question,
-                    "query_length": len(question),
-                },
-            },
-        )
+        },
+    )
 
-        structured_response = response.get("structured_response")
+    structured_response = response["structured_response"]
 
-        if structured_response is None:
-            logger.error("structured_response not found in agent response.")
-            raise RuntimeError("Invalid response returned by Compliance Agent.")
+    # Save only the latest conversation
+    chat_history.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
 
-        logger.info("Compliance query processed successfully.")
+    chat_history.append(
+        {
+            "role": "assistant",
+            "content": structured_response.answer,
+        }
+    )
 
-        return structured_response
+    # Keep only the last 10 messages (5 user/assistant exchanges)
+    if len(chat_history) > 10:
+        del chat_history[:-10]
 
-    except ValueError:
-        logger.exception("Validation error while processing compliance query.")
-        raise
-
-    except KeyError:
-        logger.exception("Missing expected key in agent response.")
-        raise
-
-    except Exception:
-        logger.exception("Unexpected error while invoking Compliance Agent.")
-        raise
+    return structured_response

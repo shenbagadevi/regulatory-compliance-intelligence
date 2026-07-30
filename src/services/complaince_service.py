@@ -55,10 +55,9 @@ class ComplianceService:
                     "Only PDF documents are allowed.",
                 )
 
-            AppConfig.UPLOAD_DIRECTORY.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
+        uploadResponse = ingest(file.filename, file_path)
+        logger.info("Document saved successfully.")
+        return uploadResponse
 
             file_path = os.path.join(
                 AppConfig.UPLOAD_DIRECTORY,
@@ -154,16 +153,21 @@ class ComplianceService:
                 langsmith_trace_id=str(uuid.uuid4()),
             )
 
-            logger.info("Compliance query processed successfully.")
+        response = ask_compliance_agent(query)
+        docs = get_last_retrieved_documents()
 
-            return compliance_response
-
-        except HTTPException:
-            raise
-
-        except Exception:
-            logger.exception("Failed to process compliance query.")
-            raise
+        return ComplianceResponse(
+            query=query,
+            answer=response.answer,
+            rule_summary=response.rule_summary,
+            citations=build_citations(docs),
+            confidence_score=calculate_confidence(docs),
+            disclaimer="This response was generated using an AI-powered "
+            "Retrieval-Augmented Generation (RAG) system based on "
+            "the uploaded regulatory documents. Please verify the "
+            "information against the latest official regulatory publications.",
+            langsmith_trace_id=str(uuid.uuid4()),
+        )
 
 
 def build_citations(docs):

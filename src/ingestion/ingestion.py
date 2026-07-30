@@ -140,9 +140,68 @@ def extract_section_metadata(text: str) -> dict:
             "document_type": document_type,
         }
 
-    except Exception:
-        logger.exception("extract_section_metadata failed.")
-        raise
+    section_no = match.group(1)
+    section_title = match.group(2).strip()
+
+    section = f"SECTION {section_no}:"
+
+    title = section_title.upper()
+
+    # ------------------------
+    # Regulation Type
+    # ------------------------
+
+    if "RBI" in title:
+        regulation = "RBI"
+
+    elif "SEBI" in title:
+        regulation = "SEBI"
+
+    elif "BASEL" in title:
+        regulation = "Basel III"
+
+    elif "AML" in title or "KYC" in title:
+        regulation = "RBI / PMLA"
+
+    elif "SARFAESI" in title:
+        regulation = "SARFAESI"
+
+    elif "IBC" in title:
+        regulation = "IBC"
+
+    else:
+        regulation = "General"
+
+    # ------------------------
+    # Document Type
+    # ------------------------
+
+    if "GUIDELINE" in title:
+        document_type = "Guideline"
+
+    elif "REGULATION" in title:
+        document_type = "Regulation"
+
+    elif "FRAMEWORK" in title:
+        document_type = "Framework"
+
+    elif "POLICY" in title:
+        document_type = "Policy"
+
+    elif "CAPITAL" in title:
+        document_type = "Capital Regulation"
+
+    elif "AML" in title or "KYC" in title:
+        document_type = "Compliance"
+
+    else:
+        document_type = "General"
+
+    return {
+        "section": section,
+        "regulation_type": regulation,
+        "document_type": document_type,
+    }
 
 
 def extract_regulation_type(text: str):
@@ -189,7 +248,6 @@ def enrich_metadata(chunks, pdf_path):
                 }
             )
 
-        logger.info("Metadata enrichment completed.")
         return chunks
 
     except Exception:
@@ -222,7 +280,7 @@ def ingest(file_name, pdf_path):
         chunks = enrich_metadata(chunks, pdf_path)
         store_chunks(chunks)
 
-        logger.info("Document ingestion completed successfully.")
+        print("Document Ingestion Completed Successfully")
 
         return UploadResponse(
             status="SUCCESS",
