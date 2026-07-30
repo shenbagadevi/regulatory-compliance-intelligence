@@ -1,193 +1,237 @@
-"""
-Business service for the Regulatory Compliance Intelligence System.
+import logging
+import shutil
+import uuid
+import os
 
-This module contains the core business logic for:
-1. Uploading regulatory documents.
-2. Validating uploaded files.
-3. Processing compliance queries.
-4. Preparing integration with the RAG pipeline.
-"""
-
-from src.schemas.compliance_response import UploadResponse, ComplianceResponse, Citation
-import logging, shutil, uuid
-from fastapi import FastAPI, UploadFile, HTTPException
 from pathlib import Path
+from fastapi import UploadFile, HTTPException
 
-# from src.core.config import AppConfig
+from src.core import logger
 from src.core.config import AppConfig
 from src.ingestion.ingestion import ingest
-from src.agents.rag_agent import ask_compliance_agent, get_last_retrieved_documents
+from src.agents.rag_agent import (
+    ask_compliance_agent,
+    get_last_retrieved_documents,
+)
 from src.tools.tools import calculate_confidence
 from src.agents.query_router import route_query
 from src.schemas.retrieval_store import clear_documents
-import os
+from src.schemas.compliance_response import (
+    UploadResponse,
+    ComplianceResponse,
+    Citation,
+)
 
-# Configure application logger
 logger = logging.getLogger(__name__)
 
 
 class ComplianceService:
     """
     Service class responsible for compliance-related operations.
-
-    This class encapsulates the business logic and keeps the
-    FastAPI route handlers lightweight.
     """
 
     async def upload_document(self, file: UploadFile) -> UploadResponse:
         """
         Upload and store a regulatory document.
-
-        Workflow
-        --------
-        1. Validate uploaded file.
-        2. Create upload directory if missing.
-        3. Save file locally.
-        4. Return upload metadata.
         """
-        logger.info("Uploading document: %s", file.filename)
-
-        if not file.filename:
-            raise HTTPException(400, "No file selected.")
-        extension = Path(file.filename).suffix.lower()
-
-        if extension not in AppConfig.ALLOWED_FILE_EXTENSIONS:
-            raise HTTPException(400, "Only PDF documents are allowed.")
-        AppConfig.UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
-
-        file_path = os.path.join(AppConfig.UPLOAD_DIRECTORY, file.filename)
         try:
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        except Exception as ex:
-            logger.exception("Failed to save uploaded file.")
+            logger.info("Document upload initiated.")
 
-            raise HTTPException(500, "Unable to save uploaded document.") from ex
+            if not file.filename:
+                logger.warning("Upload request received without a filename.")
+                raise HTTPException(400, "No file selected.")
 
-        # print(file.filename, " --", file_path)
-        # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
-        # print("before calling ingestion method")
-        uploadResponse = ingest(file.filename, file_path)
-        logger.info("Document saved successfully.")
-        return uploadResponse
+            logger.info("Uploading file: %s", file.filename)
 
-        """
-        return UploadResponse(
-            status="SUCCESS",
-            message="Document uploaded successfully.",
-            document_name=file.filename,
-            document_path=str(file_path),
-            ready_for_ingestion=True,
-        )"""
+            extension = Path(file.filename).suffix.lower()
 
-    async def process_query(self, query: str) -> ComplianceResponse:
-        """
-        Process a compliance question.
-        Retrieve relevant clauses and generate response.
-        """
-        logger.info("Received compliance query.")
-        clear_documents()
-        handled, message = route_query(query)
+            if extension not in AppConfig.ALLOWED_FILE_EXTENSIONS:
+                logger.warning(
+                    "Unsupported file extension: %s",
+                    extension,
+                )
+                raise HTTPException(
+                    400,
+                    "Only PDF documents are allowed.",
+                )
 
-        if handled:
-            return ComplianceResponse(
-                query=query,
-                answer=message,
-                citations=[],
-                rule_summary=[],
-                confidence_score=1.0,
-                disclaimer="",
-                langsmith_trace_id="",
+            AppConfig.UPLOAD_DIRECTORY.mkdir(
+                parents=True,
+                exist_ok=True,
             )
 
-        # response = ask_compliance_agent(query)
+            file_path = os.path.join(
+                AppConfig.UPLOAD_DIRECTORY,
+                file.filename,
+            )
 
-        response = ask_compliance_agent(query)
-        docs = get_last_retrieved_documents()
-        # response = agent_response.llm_response
+            try:
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
 
-        # docs = agent_response.source_documents
+                logger.info(
+                    "File saved successfully: %s",
+                    file_path,
+                )
 
-        return ComplianceResponse(
-            query=query,
-            answer=response.answer,
-            rule_summary=response.rule_summary,
-            citations=build_citations(docs),
-            confidence_score=calculate_confidence(docs),
-            disclaimer="This response was generated using an AI-powered "
-            "Retrieval-Augmented Generation (RAG) system based on "
-            "the uploaded regulatory documents. Please verify the "
-            "information against the latest official regulatory publications.",
-            langsmith_trace_id=str(uuid.uuid4()),
-        )
-        # print(query)
-        # print(response.citations)
+            except Exception:
+                logger.exception("Failed to save uploaded document.")
+                raise HTTPException(
+                    500,
+                    "Unable to save uploaded document.",
+                )
 
-        # response.query = query
-        # docs = get_last_retrieved_documents()
-        # citations = build_citations(docs)
-        # print(response.rule_summary)
-        # print(response)
-        # print(citations)
+            upload_response = ingest(
+                file.filename,
+                file_path,
+            )
 
-        # if docs:
-        #     confidence_score = calculate_confidence(docs)
+            logger.info("Document uploaded and ingested successfully.")
 
-        # langsmith_trace_id = str(uuid.uuid4())
+            return upload_response
 
-        # if not response.disclaimer:
-        #     response.disclaimer = (
-        #         "This response was generated using an AI-powered "
-        #         "Retrieval-Augmented Generation (RAG) system based on "
-        #         "the uploaded regulatory documents. Please verify the "
-        #         "information against the latest official regulatory publications."
-        #     )
-        # complainceResponse = ComplianceResponse(
-        #     query=query,
-        #     answer=response.answer,
-        #     rule_summary=response.rule_summary,
-        #     citations=build_citations(docs),
-        #     confidence_score=calculate_confidence(docs),
-        #     disclaimer=(
-        #         "This response was generated using an AI-powered "
-        #         "Retrieval-Augmented Generation (RAG) system based on "
-        #         "the uploaded regulatory documents. Please verify the "
-        #         "information against the latest official regulatory publications."
-        #     ),
-        #     langsmith_trace_id=str(uuid.uuid4()),
-        # )
-        # return complainceResponse
+        except HTTPException:
+            raise
+
+        except Exception:
+            logger.exception("Unexpected error during document upload.")
+            raise
+
+    async def process_query(
+        self,
+        query: str,
+    ) -> ComplianceResponse:
+        """
+        Process a compliance question.
+        """
+
+        try:
+
+            logger.info("Received compliance query.")
+
+            clear_documents()
+
+            handled, message = route_query(query)
+
+            if handled:
+                logger.info("Query handled by router.")
+
+                return ComplianceResponse(
+                    query=query,
+                    answer=message,
+                    citations=[],
+                    rule_summary=[],
+                    confidence_score=1.0,
+                    disclaimer="",
+                    langsmith_trace_id="",
+                )
+
+            logger.info("Invoking Compliance RAG Agent.")
+
+            response = ask_compliance_agent(query)
+
+            docs = get_last_retrieved_documents()
+
+            logger.info(
+                "Retrieved %s supporting documents.",
+                len(docs),
+            )
+
+            compliance_response = ComplianceResponse(
+                query=query,
+                answer=response.answer,
+                rule_summary=response.rule_summary,
+                citations=build_citations(docs),
+                confidence_score=calculate_confidence(docs),
+                disclaimer=(
+                    "This response was generated using an "
+                    "AI-powered Retrieval-Augmented Generation "
+                    "(RAG) system based on the uploaded "
+                    "regulatory documents. Please verify the "
+                    "information against the latest official "
+                    "regulatory publications."
+                ),
+                langsmith_trace_id=str(uuid.uuid4()),
+            )
+
+            logger.info("Compliance query processed successfully.")
+
+            return compliance_response
+
+        except HTTPException:
+            raise
+
+        except Exception:
+            logger.exception("Failed to process compliance query.")
+            raise
 
 
 def build_citations(docs):
-    citations = []
-    seen = set()
+    """
+    Build citation objects from retrieved documents.
+    """
 
-    for doc in docs:
-        metadata = doc.metadata
+    try:
 
-        key = (
-            metadata.get("document"),
-            metadata.get("section"),
-            metadata.get("page"),
+        citations = []
+        seen = set()
+
+        logger.info(
+            "Building citations from %s documents.",
+            len(docs),
         )
 
-        if key in seen:
-            continue
+        for doc in docs:
 
-        seen.add(key)
+            metadata = doc.metadata
 
-        citations.append(
-            Citation(
-                document=metadata.get("document", "N/A"),
-                section=metadata.get("section", "N/A"),
-                page=metadata.get("page", 0) + 1,  # convert to 1-based page
-                regulation_type=metadata.get("regulation_type", ""),
-                version=metadata.get("version", "1.0"),
+            key = (
+                metadata.get("document"),
+                metadata.get("section"),
+                metadata.get("page"),
             )
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            citations.append(
+                Citation(
+                    document=metadata.get(
+                        "document",
+                        "N/A",
+                    ),
+                    section=metadata.get(
+                        "section",
+                        "N/A",
+                    ),
+                    page=metadata.get(
+                        "page",
+                        0,
+                    )
+                    + 1,
+                    regulation_type=metadata.get(
+                        "regulation_type",
+                        "",
+                    ),
+                    version=metadata.get(
+                        "version",
+                        "1.0",
+                    ),
+                )
+            )
+
+        logger.info(
+            "Generated %s citations.",
+            len(citations),
         )
 
-    return citations
+        return citations
+
+    except Exception:
+        logger.exception("Failed to build citations.")
+        raise
 
 
 compliance_service = ComplianceService()

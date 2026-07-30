@@ -24,7 +24,7 @@ Answer
 
 Rule Summary
 
-• Return 1–3 concise compliance rules only when directly supported by the retrieved content.
+• Return 1-3 concise compliance rules only when directly supported by the retrieved content.
 • Otherwise return an empty list.
 
 Return only the ComplianceLLMResponse schema.

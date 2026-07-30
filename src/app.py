@@ -9,6 +9,8 @@ from src.routes.compliance_query_routes import router as compliance_router
 from src.routes.document_routes import router as document_router
 from src.routes.health_routes import router as health_router
 
+from src.core import logger
+
 app = FastAPI(
     title=AppConfig.PROJECT_NAME,
     version=AppConfig.API_VERSION,
