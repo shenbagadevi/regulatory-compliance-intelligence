@@ -1,30 +1,60 @@
+import logging
+
+# Import only to initialize logging configuration
+from src.core import logger
+
 from langchain.agents import create_agent
+
 from src.tools.tools import (
     hybrid_retriever_tool,
     keyword_retriever_tool,
     semantic_retriever_tool,
 )
 from src.schemas.retrieval_store import get_documents
-
 from src.core.config import OPENAI_MODEL
 from src.agents.prompt_template import SYS_PROMPT
-from src.schemas.compliance_response import ComplianceResponseLLM, AgentResponse
+from src.schemas.compliance_response import ComplianceResponseLLM
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 def get_last_retrieved_documents():
-    return get_documents()
+    """
+    Returns the last retrieved documents.
+    """
+    try:
+        documents = get_documents()
+
+        if documents is None:
+            logger.warning("No retrieved documents found.")
+            return []
+
+        return documents
+
+    except Exception:
+        logger.exception("Failed to retrieve last retrieved documents.")
+        raise
 
 
-rag_agent = create_agent(
-    model=OPENAI_MODEL,
-    tools=[
-        semantic_retriever_tool,
-        keyword_retriever_tool,
-        hybrid_retriever_tool,
-    ],
-    system_prompt=SYS_PROMPT,
-    response_format=ComplianceResponseLLM,
-)
+# Initialize RAG Agent
+try:
+    rag_agent = create_agent(
+        model=OPENAI_MODEL,
+        tools=[
+            semantic_retriever_tool,
+            keyword_retriever_tool,
+            hybrid_retriever_tool,
+        ],
+        system_prompt=SYS_PROMPT,
+        response_format=ComplianceResponseLLM,
+    )
+
+    logger.info("Compliance RAG Agent initialized successfully.")
+
+except Exception:
+    logger.exception("Failed to initialize Compliance RAG Agent.")
+    raise
 
 chat_history = []
 

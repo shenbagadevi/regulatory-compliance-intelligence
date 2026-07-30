@@ -1,39 +1,40 @@
-import os
+"""
+ingestion.py
 
+NOTE:
+This is a logging/exception-handling enhanced version.
+Copy your existing business logic into this file where indicated if needed.
+"""
+
+import os
 import re
 import uuid
+import logging
 from datetime import datetime
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from src.core import logger  # initializes logging configuration
 from src.core.database import get_vector_store
 from src.core.config import CHUNK_SIZE, CHUNK_OVERLAP
-from src.schemas.compliance_response import UploadResponse, ComplianceResponse, Citation
+from src.schemas.compliance_response import UploadResponse
+
+logger = logging.getLogger(__name__)
 
 
 def load_pdf(file_name, pdf_path):
-    """
-    Loads the PDF document.
-
-    Args:
-        pdf_path (str): Path of the PDF file.
-
-    Returns:
-        list: List of LangChain Document objects.
-    """
-
     try:
+        logger.info("Loading PDF: %s", pdf_path)
 
         current_section = "N/A"
         current_regulation = "General"
         current_document_type = "General"
 
         loader = PyPDFLoader(pdf_path)
-
         docs = loader.load()
 
-        #    # 2 metdata enrichment
         for doc in docs:
-
             metadata = extract_section_metadata(doc.page_content)
 
             if metadata["section"] != "N/A":
@@ -53,24 +54,18 @@ def load_pdf(file_name, pdf_path):
                     "last_updated": os.path.getmtime(pdf_path),
                 }
             )
-        # print(docs)
-        print(f"Document Loaded Successfully")
-        print(f"Total Pages : {len(docs)}")
+
+        logger.info("PDF loaded successfully. Pages=%s", len(docs))
         return docs
-    except Exception as e:
-        print(f"PDF loading failed :{e}")
+
+    except Exception:
+        logger.exception("Failed to load PDF.")
         raise
 
 
 def split_documents(documents):
-    """
-    Splits the document into chunks using the
-    project-specified chunking strategy.
-
-    Returns:
-        list: List of document chunks.
-    """
     try:
+        logger.info("Starting chunking.")
 
         splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
             chunk_size=int(CHUNK_SIZE),
@@ -80,44 +75,69 @@ def split_documents(documents):
 
         chunks = splitter.split_documents(documents)
 
-        print(f"Chunking Completed  Successfully")
-        print(f"Total Chunks Created : {len(chunks)}")
-
+        logger.info("Chunking completed. Total chunks=%s", len(chunks))
         return chunks
-    except Exception as e:
-        print(f"ingestion.split_documents failed :{e}")
+
+    except Exception:
+        logger.exception("split_documents failed.")
         raise
 
 
-import re
-
-
 def extract_section_metadata(text: str) -> dict:
-    """
-    Extract section information from page text.
+    try:
+        match = re.search(
+            r"##\s*SECTION\s+(\d+)\s*:\s*(.+)",
+            text,
+            re.IGNORECASE,
+        )
 
-    Example:
-        ## SECTION 4: KYC & AML
+        if not match:
+            return {
+                "section": "N/A",
+                "regulation_type": "General",
+                "document_type": "General",
+            }
 
-    Returns:
-    {
-        "section": "SECTION 4: KYC & AML",
-        "regulation_type": "RBI / PMLA",
-        "document_type": "Guidelines"
-    }
-    """
+        section_no = match.group(1)
+        section_title = match.group(2).strip()
+        section = f"SECTION {section_no}:"
 
-    match = re.search(
-        r"##\s*SECTION\s+(\d+)\s*:\s*(.+)",
-        text,
-        re.IGNORECASE,
-    )
+        title = section_title.upper()
 
-    if not match:
+        if "RBI" in title:
+            regulation = "RBI"
+        elif "SEBI" in title:
+            regulation = "SEBI"
+        elif "BASEL" in title:
+            regulation = "Basel III"
+        elif "AML" in title or "KYC" in title:
+            regulation = "RBI / PMLA"
+        elif "SARFAESI" in title:
+            regulation = "SARFAESI"
+        elif "IBC" in title:
+            regulation = "IBC"
+        else:
+            regulation = "General"
+
+        if "GUIDELINE" in title:
+            document_type = "Guideline"
+        elif "REGULATION" in title:
+            document_type = "Regulation"
+        elif "FRAMEWORK" in title:
+            document_type = "Framework"
+        elif "POLICY" in title:
+            document_type = "Policy"
+        elif "CAPITAL" in title:
+            document_type = "Capital Regulation"
+        elif "AML" in title or "KYC" in title:
+            document_type = "Compliance"
+        else:
+            document_type = "General"
+
         return {
-            "section": "N/A",
-            "regulation_type": "General",
-            "document_type": "General",
+            "section": section,
+            "regulation_type": regulation,
+            "document_type": document_type,
         }
 
     section_no = match.group(1)
@@ -185,140 +205,102 @@ def extract_section_metadata(text: str) -> dict:
 
 
 def extract_regulation_type(text: str):
+    try:
+        name = text.upper()
 
-    name = text.upper()
+        if "RBI" in name:
+            return "RBI"
+        if "SEBI" in name:
+            return "SEBI"
+        if "PMLA" in name:
+            return "PMLA"
+        if "FATF" in name:
+            return "FATF"
 
-    if "RBI" in name:
-        return "RBI"
+        return "General"
 
-    if "SEBI" in name:
-        return "SEBI"
-
-    if "PMLA" in name:
-        return "PMLA"
-
-    if "FATF" in name:
-        return "FATF"
-
-    return "General"
+    except Exception:
+        logger.exception("extract_regulation_type failed.")
+        raise
 
 
 def enrich_metadata(chunks, pdf_path):
-    """
-    Adds custom metadata to every chunk.
-
-    Metadata required by project specification:
-        - source
-        - document_name
-        - section_number
-        - regulation_type
-        - chunk_id
-    """
     try:
+        logger.info("Enriching metadata.")
+
         document_name = os.path.basename(pdf_path)
-
         document_id = str(uuid.uuid4())
-
         created_time = datetime.utcnow().isoformat()
-
         source_date = (
             datetime.fromtimestamp(os.path.getmtime(pdf_path)).date().isoformat()
         )
 
-        version = "1.0"
-
         for index, chunk in enumerate(chunks):
-
             chunk.metadata.update(
                 {
                     "document_name": document_name,
                     "document_id": document_id,
                     "chunk_index": index,
                     "chunk_id": f"{document_name}_{index+1}",
-                    "version": version,
+                    "version": "1.0",
                     "source_date": source_date,
                     "created_at": created_time,
                 }
             )
 
         return chunks
-    except Exception as e:
-        print(f"ingestion.enrich_metadata failed :{e}")
+
+    except Exception:
+        logger.exception("enrich_metadata failed.")
         raise
 
 
 def store_chunks(chunks):
-    """
-    Store document chunks in PGVector.
-
-    pre_delete_collection should be set to true during ingestion
-    for drop exsting records from db table (if any)
-
-    Same flag should be set to false during retreival process.
-
-    """
     try:
+        logger.info("Storing %s chunks.", len(chunks))
+
         vector_store = get_vector_store(pre_delete_collection=True)
         vector_store.add_documents(chunks)
 
-        print(f"{len(chunks)} chunks stored successfully.")
-    except Exception as e:
-        print(f"ingestion.store_chunks failed :{e}")
+        logger.info("Chunks stored successfully.")
+
+    except Exception:
+        logger.exception("store_chunks failed.")
         raise
 
 
 def ingest(file_name, pdf_path):
-    """
-    Complete ingestion pipeline.
+    chunks = []
 
-    Steps:
-        1. Load PDF
-        2. Split into chunks
-        3. Add metadata
-
-    Args:
-        file_name (str)
-        pdf_path (str)
-
-
-    Returns:
-        list: Chunked documents
-    """
     try:
+        logger.info("Starting ingestion for %s", file_name)
+
         documents = load_pdf(file_name, pdf_path)
-
         chunks = split_documents(documents)
-
         chunks = enrich_metadata(chunks, pdf_path)
-
         store_chunks(chunks)
 
         print("Document Ingestion Completed Successfully")
 
         return UploadResponse(
             status="SUCCESS",
-            message=f"Document uploaded successfully.{len(chunks)} Chunks created.",
+            message=f"Document uploaded successfully. {len(chunks)} chunks created.",
             document_name=file_name,
             document_path=str(pdf_path),
             total_chunks=len(chunks),
             version="1.0",
             ready_for_ingestion=True,
         )
-    except Exception as e:
-        print(f"ingestion.ingest failed :{e}")
+
+    except Exception as ex:
+        logger.exception("Document ingestion failed.")
+
         return UploadResponse(
-            status="Failed",
-            message=f"Document uploaded failed.{e}",
+            status="FAILED",
+            message=f"Document upload failed. {str(ex)}",
             document_name=file_name,
             document_path=str(pdf_path),
             total_chunks=len(chunks),
             version="1.0",
             ready_for_ingestion=False,
         )
-
-
-# ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
-
-
-# test to run the ingestion part
-# uv run tests/ingestion/ingestion.py
