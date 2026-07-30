@@ -24,6 +24,5 @@ async def compliance_query(request: ComplianceRequest) -> ComplianceResponse:
     Returns: ComplianceResponse
     """
 
-    # print("Query :", request.query)
+    
     return await compliance_service.process_query(request.query)
-    # return await query_service(request.query)

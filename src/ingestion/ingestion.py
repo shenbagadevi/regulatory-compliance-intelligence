@@ -123,7 +123,6 @@ def extract_section_metadata(text: str) -> dict:
     section_no = match.group(1)
     section_title = match.group(2).strip()
 
-    # section = f"SECTION {section_no}: {section_title}"
     section = f"SECTION {section_no}:"
 
     title = section_title.upper()
@@ -242,15 +241,6 @@ def enrich_metadata(chunks, pdf_path):
                 }
             )
 
-            # Placeholder values.
-            # These can later be extracted automatically
-            # from headings inside regulatory documents.
-            # chunk.metadata["section_number"] = extract_section(chunk.page_content)
-
-            # chunk.metadata["regulation_type"] = extract_regulation_type(
-            #    chunk.page_content
-            # )
-
         return chunks
     except Exception as e:
         print(f"ingestion.enrich_metadata failed :{e}")
@@ -303,13 +293,7 @@ def ingest(file_name, pdf_path):
 
         store_chunks(chunks)
 
-        # vectore_store = get_vector_store(collection_name="hr_support_desk")
-
-        # vectore_store.add_documents(chunks)
-
         print("Document Ingestion Completed Successfully")
-
-        # return chunks
 
         return UploadResponse(
             status="SUCCESS",

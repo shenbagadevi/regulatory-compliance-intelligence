@@ -121,14 +121,14 @@ for message in st.session_state.messages:
             st.subheader("Answer")
 
             st.info(message["answer"])
+            if message["rule_summary"]:
+                with st.expander(
+                    "Rule Summary",
+                    expanded=False,
+                ):
 
-            with st.expander(
-                "Rule Summary",
-                expanded=False,
-            ):
-
-                for rule in message["rule_summary"]:
-                    st.write(f"✔ {rule}")
+                    for rule in message["rule_summary"]:
+                        st.write(f"✔ {rule}")
 
             confidence = message["confidence_score"]
             if confidence > 0:
@@ -138,18 +138,18 @@ for message in st.session_state.messages:
                 )
 
                 st.progress(confidence)
+            if message["citations"]:
+                with st.expander("Citations"):
 
-            with st.expander("Citations"):
+                    for citation in message["citations"]:
 
-                for citation in message["citations"]:
+                        st.write(f"📄 {citation['document']}")
 
-                    st.write(f"📄 {citation['document']}")
+                        st.caption(f"Section: {citation['section']}")
 
-                    st.caption(f"Section: {citation['section']}")
+                        st.caption(f"Page: {citation['page']}")
 
-                    st.caption(f"Page: {citation['page']}")
-
-                    st.divider()
+                        st.divider()
 
             st.caption(message["disclaimer"])
 
@@ -196,33 +196,33 @@ if question:
             st.subheader("Answer")
 
             st.info(result["answer"])
+            if result["rule_summary"]:
+                with st.expander(
+                    "Rule Summary",
+                    expanded=False,
+                ):
 
-            with st.expander(
-                "Rule Summary",
-                expanded=False,
-            ):
-
-                for rule in result["rule_summary"]:
-                    st.write(f"✔ {rule}")
+                    for rule in result["rule_summary"]:
+                        st.write(f"✔ {rule}")
 
             confidence = result["confidence_score"]
+            if confidence > 0:
+                st.metric(
+                    "Confidence",
+                    f"{confidence * 100:.0f}%",
+                )
 
-            st.metric(
-                "Confidence",
-                f"{confidence * 100:.0f}%",
-            )
+                st.progress(confidence)
+            if result["citations"]:
+                with st.expander("Citations"):
 
-            st.progress(confidence)
+                    for citation in result["citations"]:
 
-            with st.expander("Citations"):
+                        st.write(f"📄 {citation['document']}")
 
-                for citation in result["citations"]:
+                        st.caption(f"Section: {citation['section']}")
 
-                    st.write(f"📄 {citation['document']}")
-
-                    st.caption(f"Section: {citation['section']}")
-
-                    st.caption(f"Page: {citation['page']}")
+                        st.caption(f"Page: {citation['page']}")
 
             st.caption(result["disclaimer"])
 

@@ -21,8 +21,6 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
     try:
         vector_store = get_vector_store(pre_delete_collection=False)
 
-        # results = vector_store.similarity_search(query=query, k=k)
-        # results = vector_store.similarity_search_with_score(query=query, k=k)
         filters = extract_metadata_filters(query)
 
         if filters:
@@ -159,7 +157,6 @@ def hybrid_search(
     """
     try:
         # Perform Vector Search
-        # vector_docs = vector_search(query=query, k=vector_k)
         vector_results = vector_search(query=query, k=vector_k)
 
         vector_docs = []
@@ -339,9 +336,6 @@ def calculate_confidence(docs):
     # Convert distance into similarity
     similarity_score = 1 / (1 + avg_distance)
 
-    # Retrieval completeness
-    retrieval_score = len(docs) / FINAL_SEARCH_K
-
     # Weighted confidence
     # confidence = similarity_score * 0.8 + retrieval_score * 0.2
     coverage_score = min(len(docs), 2) / 2
@@ -354,37 +348,3 @@ def calculate_confidence(docs):
 
     return round(min(confidence, 1.0), 2)
 
-
-# @tool
-# def compliance_retriever_tool(query: str) -> str:
-#     """
-#     Retrieves relevant compliance documents using Hybrid Search.
-#     """
-#     try:
-#         docs = hybrid_search(
-#             query=query,
-#             vector_k=VECTOR_SEARCH_K,
-#             keyword_k=KEYWORD_SEARCH_K,
-#             final_k=FINAL_SEARCH_K,
-#         )
-
-#         if not docs:
-#             return "No relevant documents found."
-
-#         context = []
-
-#         for doc in docs:
-#             # metadata in LLMContext
-#             context.append(f"""
-#             Document: {doc.metadata.get('document')}
-#             Section: {doc.metadata.get('section')}
-#             Page: {doc.metadata.get('page')}
-
-#             Content:
-#             {doc.page_content}
-#             """)
-
-#         return "\n\n".join(context)
-#     except Exception as e:
-#         print(f"tools.compliance_retriever_tool failed :{e}")
-#         raise

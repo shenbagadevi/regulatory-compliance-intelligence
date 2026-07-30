@@ -64,9 +64,6 @@ class ComplianceService:
 
             raise HTTPException(500, "Unable to save uploaded document.") from ex
 
-        # print(file.filename, " --", file_path)
-        # ingest("data/Capstone_Project_1_Regulatory_Compliance_System_FAQ.pdf")
-        # print("before calling ingestion method")
         uploadResponse = ingest(file.filename, file_path)
         logger.info("Document saved successfully.")
         return uploadResponse
@@ -100,13 +97,8 @@ class ComplianceService:
                 langsmith_trace_id="",
             )
 
-        # response = ask_compliance_agent(query)
-
         response = ask_compliance_agent(query)
         docs = get_last_retrieved_documents()
-        # response = agent_response.llm_response
-
-        # docs = agent_response.source_documents
 
         return ComplianceResponse(
             query=query,
@@ -120,43 +112,6 @@ class ComplianceService:
             "information against the latest official regulatory publications.",
             langsmith_trace_id=str(uuid.uuid4()),
         )
-        # print(query)
-        # print(response.citations)
-
-        # response.query = query
-        # docs = get_last_retrieved_documents()
-        # citations = build_citations(docs)
-        # print(response.rule_summary)
-        # print(response)
-        # print(citations)
-
-        # if docs:
-        #     confidence_score = calculate_confidence(docs)
-
-        # langsmith_trace_id = str(uuid.uuid4())
-
-        # if not response.disclaimer:
-        #     response.disclaimer = (
-        #         "This response was generated using an AI-powered "
-        #         "Retrieval-Augmented Generation (RAG) system based on "
-        #         "the uploaded regulatory documents. Please verify the "
-        #         "information against the latest official regulatory publications."
-        #     )
-        # complainceResponse = ComplianceResponse(
-        #     query=query,
-        #     answer=response.answer,
-        #     rule_summary=response.rule_summary,
-        #     citations=build_citations(docs),
-        #     confidence_score=calculate_confidence(docs),
-        #     disclaimer=(
-        #         "This response was generated using an AI-powered "
-        #         "Retrieval-Augmented Generation (RAG) system based on "
-        #         "the uploaded regulatory documents. Please verify the "
-        #         "information against the latest official regulatory publications."
-        #     ),
-        #     langsmith_trace_id=str(uuid.uuid4()),
-        # )
-        # return complainceResponse
 
 
 def build_citations(docs):
