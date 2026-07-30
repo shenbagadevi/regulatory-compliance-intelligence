@@ -21,5 +21,10 @@ pypdf
 # How to test ingestion part alone 
  uv run python test_ingestion.py
 
+# cmd hang issues 
+tasklist | findstr uvicorn
+taskkill /F /IM python.exe
+tasklist | findstr python
 
+taskkill /F /IM uvcorn
 

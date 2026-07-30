@@ -37,7 +37,7 @@ def load_pdf(file_name, pdf_path):
         loader = PyPDFLoader(pdf_path)
         docs = loader.load()
 
-        logger.info("PDF loaded successfully. Total pages: %d", len(docs))
+        # logger.info("PDF loaded successfully. Total pages: %d", len(docs))
 
         for doc in docs:
 
@@ -61,7 +61,7 @@ def load_pdf(file_name, pdf_path):
                 }
             )
 
-        logger.info("Metadata enrichment completed for PDF pages.")
+        # logger.info("Metadata enrichment completed for PDF pages.")
 
         return docs
 
@@ -80,11 +80,13 @@ def split_documents(documents):
     """
 
     try:
+        """
         logger.info(
             "Starting document chunking. Chunk Size=%s, Chunk Overlap=%s",
             CHUNK_SIZE,
             CHUNK_OVERLAP,
         )
+        """
 
         splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
             chunk_size=int(CHUNK_SIZE),
@@ -231,7 +233,7 @@ def enrich_metadata(chunks, pdf_path):
     """
 
     try:
-        logger.info("Starting metadata enrichment.")
+        # logger.info("Starting metadata enrichment.")
 
         document_name = os.path.basename(pdf_path)
         document_id = str(uuid.uuid4())
@@ -263,10 +265,12 @@ def enrich_metadata(chunks, pdf_path):
                 }
             )
 
+        """
         logger.info(
             "Metadata enrichment completed successfully for %d chunks.",
             len(chunks),
         )
+        """
 
         return chunks
 
@@ -290,21 +294,11 @@ def store_chunks(chunks):
     """
 
     try:
-        logger.info("Connecting to PGVector.")
+        # logger.info("Connecting to PGVector.")
 
         vector_store = get_vector_store(pre_delete_collection=True)
 
-        logger.info(
-            "Storing %d chunks into PGVector.",
-            len(chunks),
-        )
-
         vector_store.add_documents(chunks)
-
-        logger.info(
-            "Successfully stored %d chunks.",
-            len(chunks),
-        )
 
     except Exception:
         logger.exception("Failed while storing document chunks in PGVector.")

@@ -45,7 +45,10 @@ class ComplianceService:
         3. Save file locally.
         4. Return upload metadata.
         """
-        logger.info("Uploading document: %s", file.filename)
+        logger.info(
+            "========================= Uploading document: %s ===========================",
+            file.filename,
+        )
 
         if not file.filename:
             raise HTTPException(400, "No file selected.")
@@ -65,7 +68,7 @@ class ComplianceService:
             raise HTTPException(500, "Unable to save uploaded document.") from ex
 
         uploadResponse = ingest(file.filename, file_path)
-        logger.info("Document saved successfully.")
+        # logger.info("Document saved successfully.")
         return uploadResponse
 
         """
@@ -82,7 +85,7 @@ class ComplianceService:
         Process a compliance question.
         Retrieve relevant clauses and generate response.
         """
-        logger.info("Received compliance query.")
+        logger.info("================= Received compliance query. ===================")
         clear_documents()
         handled, message = route_query(query)
 
