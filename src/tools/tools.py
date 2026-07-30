@@ -1,20 +1,16 @@
-from collections import defaultdict
-import logging
-import re
-
 from langchain_core.documents import Document
+from collections import defaultdict
 from langchain_core.tools import tool
-
-# Initialize logging configuration
-from src.core import logger
-
+import re
+from src.schemas.retrieval_store import set_documents
 from src.core.config import *
-from src.core.database import get_connection, get_vector_store
 from src.schemas.compliance_response import (
     RetrievalResult,
     RetrievedChunk,
 )
-from src.schemas.retrieval_store import set_documents
+from src.core.database import get_vector_store, get_connection
+import logging
+from src.core import logger
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +20,17 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
     Perform semantic similarity search.
 
     Args:
-        query (str): User question
-        k (int): Number of documents to retrieve
+        query (str): User question.
+        k (int): Number of documents to retrieve.
 
     Returns:
-        List[Document]
+        List[Tuple[Document, float]]: Retrieved documents with similarity scores.
     """
-
     try:
-
         logger.info(
-            "Starting semantic vector search. Query='%s'",
+            "Starting semantic vector search. Query='%s', k=%d",
             query,
+            k,
         )
 
         vector_store = get_vector_store(pre_delete_collection=False)
@@ -43,7 +38,6 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
         filters = extract_metadata_filters(query)
 
         if filters:
-
             logger.info(
                 "Applying metadata filters: %s",
                 filters,
@@ -54,31 +48,34 @@ def vector_search(query: str, k: int = VECTOR_SEARCH_K):
                 k=k,
                 filter=filters,
             )
-
         else:
-
             results = vector_store.similarity_search_with_score(
                 query=query,
                 k=k,
             )
 
         logger.info(
-            "Semantic search completed successfully. Retrieved %s documents.",
+            "Semantic vector search completed successfully. Retrieved %d documents.",
             len(results),
         )
 
         return results
 
     except Exception:
-
         logger.exception("tools.vector_search failed.")
-
         raise
 
 
 def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
     """
     Performs PostgreSQL Full-Text Search on document chunks.
+
+    Args:
+        query (str): User search query.
+        limit (int): Maximum number of documents to retrieve.
+
+    Returns:
+        List[Document]: Matching documents.
     """
 
     conn = None
@@ -86,8 +83,9 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
     try:
 
         logger.info(
-            "Starting keyword search. Query='%s'",
+            "Starting keyword search. Query='%s', limit=%d",
             query,
+            limit,
         )
 
         sql = """
@@ -132,6 +130,8 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
 
         conn = get_connection()
 
+        logger.info("Database connection established.")
+
         with conn.cursor() as cursor:
 
             cursor.execute(
@@ -145,19 +145,16 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
 
             rows = cursor.fetchall()
 
-        documents = []
-
-        for row in rows:
-
-            documents.append(
-                Document(
-                    page_content=row[0],
-                    metadata=row[1],
-                )
+        documents = [
+            Document(
+                page_content=row[0],
+                metadata=row[1],
             )
+            for row in rows
+        ]
 
         logger.info(
-            "Keyword search completed successfully. Retrieved %s documents.",
+            "Keyword search completed successfully. Retrieved %d documents.",
             len(documents),
         )
 
@@ -174,24 +171,34 @@ def keyword_search(query: str, limit: int = KEYWORD_SEARCH_K):
         if conn:
 
             try:
+
                 conn.close()
 
-                logger.debug("PostgreSQL connection closed.")
+                logger.debug("Database connection closed.")
 
             except Exception:
 
-                logger.exception("Failed to close PostgreSQL connection.")
+                logger.exception("Failed to close database connection.")
 
 
 def rrf_rank(vector_docs, keyword_docs, k=60):
     """
-    Rank documents using Reciprocal Rank Fusion.
+    Rank documents using Reciprocal Rank Fusion (RRF).
+
+    Args:
+        vector_docs (List[Document]): Documents returned by vector search.
+        keyword_docs (List[Document]): Documents returned by keyword search.
+        k (int): RRF constant (default: 60).
+
+    Returns:
+        List[Document]: Ranked documents after fusion.
     """
 
     try:
 
         logger.info(
-            "Starting Reciprocal Rank Fusion (RRF). " "Vector Docs=%s, Keyword Docs=%s",
+            "Starting Reciprocal Rank Fusion. "
+            "Vector documents=%d, Keyword documents=%d",
             len(vector_docs),
             len(keyword_docs),
         )
@@ -202,8 +209,12 @@ def rrf_rank(vector_docs, keyword_docs, k=60):
         # Vector Search
         for rank, doc in enumerate(vector_docs, start=1):
 
-            # RRF should use unique chunk ID instead of page_content
+            # Use unique chunk_id instead of page content
             key = doc.metadata.get("chunk_id")
+
+            if not key:
+                logger.warning("Skipping vector document without chunk_id.")
+                continue
 
             scores[key] += 1 / (k + rank)
             doc_lookup[key] = doc
@@ -212,6 +223,10 @@ def rrf_rank(vector_docs, keyword_docs, k=60):
         for rank, doc in enumerate(keyword_docs, start=1):
 
             key = doc.metadata.get("chunk_id")
+
+            if not key:
+                logger.warning("Skipping keyword document without chunk_id.")
+                continue
 
             scores[key] += 1 / (k + rank)
             doc_lookup[key] = doc
@@ -225,7 +240,7 @@ def rrf_rank(vector_docs, keyword_docs, k=60):
         ranked_docs = [doc_lookup[key] for key, _ in ranked]
 
         logger.info(
-            "RRF completed successfully. Ranked %s documents.",
+            "RRF ranking completed successfully. Ranked %d documents.",
             len(ranked_docs),
         )
 
@@ -267,8 +282,13 @@ def hybrid_search(
             query,
         )
 
-        # Perform Vector Search
-        vector_results = vector_search(query=query, k=vector_k)
+        # -------------------------
+        # Vector Search
+        # -------------------------
+        vector_results = vector_search(
+            query=query,
+            k=vector_k,
+        )
 
         vector_docs = []
         distance_map = {}
@@ -277,33 +297,47 @@ def hybrid_search(
 
             vector_docs.append(doc)
 
-            # Use chunk_id because it is unique
-            # retrieve/stores not only the last document distance
             chunk_id = doc.metadata.get("chunk_id")
-            distance_map[chunk_id] = score
+
+            if chunk_id:
+                distance_map[chunk_id] = score
+            else:
+                logger.warning("Vector search returned a document without chunk_id.")
 
         logger.info(
-            "Vector search returned %s documents.",
+            "Vector search retrieved %d documents.",
             len(vector_docs),
         )
 
-        # Perform Keyword Search
+        # -------------------------
+        # Keyword Search
+        # -------------------------
         keyword_docs = keyword_search(
             query=query,
             limit=keyword_k,
         )
 
         logger.info(
-            "Keyword search returned %s documents.",
+            "Keyword search retrieved %d documents.",
             len(keyword_docs),
         )
 
-        # Merge & Rank using RRF
+        # -------------------------
+        # Reciprocal Rank Fusion
+        # -------------------------
         ranked_docs = rrf_rank(
             vector_docs=vector_docs,
             keyword_docs=keyword_docs,
         )
 
+        logger.info(
+            "RRF produced %d ranked documents.",
+            len(ranked_docs),
+        )
+
+        # -------------------------
+        # Sort by latest source/version
+        # -------------------------
         ranked_docs = sorted(
             ranked_docs,
             key=lambda doc: (
@@ -313,6 +347,9 @@ def hybrid_search(
             reverse=True,
         )
 
+        # -------------------------
+        # Similarity Filtering
+        # -------------------------
         filtered = []
 
         for doc in ranked_docs:
@@ -322,6 +359,7 @@ def hybrid_search(
 
             doc.metadata["vector_distance"] = distance
 
+            # Keyword-only document
             if distance is None:
 
                 filtered.append(doc)
@@ -335,7 +373,7 @@ def hybrid_search(
 
         logger.info(
             "Hybrid search completed successfully. "
-            "Retrieved=%s, Filtered=%s, Returned=%s",
+            "Ranked=%d, Filtered=%d, Returned=%d",
             len(ranked_docs),
             len(filtered),
             min(len(filtered), final_k),
@@ -352,7 +390,13 @@ def hybrid_search(
 
 def extract_metadata_filters(query: str):
     """
-    Extract metadata filters from user query.
+    Extract metadata filters from the user query.
+
+    Args:
+        query (str): User query.
+
+    Returns:
+        dict: Metadata filters to be applied during vector search.
     """
 
     try:
@@ -377,7 +421,7 @@ def extract_metadata_filters(query: str):
 
         logger.info(
             "Metadata filters extracted: %s",
-            filters,
+            filters if filters else "No filters applied",
         )
 
         return filters
@@ -390,18 +434,25 @@ def extract_metadata_filters(query: str):
 
 
 @tool
-def semantic_retriever_tool(
-    query: str,
-):
+def semantic_retriever_tool(query: str):
     """
     Use when the answer depends on concepts,
     definitions, purposes, comparisons,
     or explanations.
+
+    Args:
+        query (str): User query.
+
+    Returns:
+        RetrievalResult: Structured retrieval result.
     """
 
     try:
 
-        logger.info("Executing semantic retriever tool.")
+        logger.info(
+            "Executing semantic retriever tool. Query='%s'",
+            query,
+        )
 
         results = vector_search(query)
 
@@ -413,14 +464,18 @@ def semantic_retriever_tool(
 
             docs.append(doc)
 
-        set_documents(docs)
-
         logger.info(
-            "Semantic retriever returned %s documents.",
+            "Semantic vector search returned %d documents.",
             len(docs),
         )
 
-        return build_retrieval_result(docs)
+        set_documents(docs)
+
+        retrieval_result = build_retrieval_result(docs)
+
+        logger.info("Semantic retriever completed successfully.")
+
+        return retrieval_result
 
     except Exception:
 
@@ -430,9 +485,7 @@ def semantic_retriever_tool(
 
 
 @tool
-def keyword_retriever_tool(
-    query: str,
-):
+def keyword_retriever_tool(query: str):
     """
     Use when the question contains exact
     regulation names, sections,
@@ -449,7 +502,7 @@ def keyword_retriever_tool(
         set_documents(docs)
 
         logger.info(
-            "Keyword retriever returned %s documents.",
+            "Keyword retriever returned %d documents.",
             len(docs),
         )
 
@@ -463,29 +516,40 @@ def keyword_retriever_tool(
 
 
 @tool
-def hybrid_retriever_tool(
-    query: str,
-):
+def hybrid_retriever_tool(query: str):
     """
     Use when both exact terminology and conceptual understanding
     are required, or when another retrieval tool returned
     insufficient information.
+
+    Args:
+        query (str): User query.
+
+    Returns:
+        RetrievalResult: Structured retrieval result.
     """
 
     try:
 
-        logger.info("Executing hybrid retriever tool.")
+        logger.info(
+            "Executing hybrid retriever tool. Query='%s'",
+            query,
+        )
 
         docs = hybrid_search(query)
 
-        set_documents(docs)
-
         logger.info(
-            "Hybrid retriever returned %s documents.",
+            "Hybrid search returned %d documents.",
             len(docs),
         )
 
-        return build_retrieval_result(docs)
+        set_documents(docs)
+
+        retrieval_result = build_retrieval_result(docs)
+
+        logger.info("Hybrid retriever completed successfully.")
+
+        return retrieval_result
 
     except Exception:
 
@@ -494,18 +558,22 @@ def hybrid_retriever_tool(
         raise
 
 
-def build_retrieval_result(
-    docs,
-) -> RetrievalResult:
+def build_retrieval_result(docs) -> RetrievalResult:
     """
-    Convert retrieved LangChain documents into a
-    structured retrieval result.
+    Convert retrieved LangChain documents into a structured
+    retrieval result for the LLM.
+
+    Args:
+        docs (List[Document]): Retrieved LangChain documents.
+
+    Returns:
+        RetrievalResult: Structured retrieval result.
     """
 
     try:
 
         logger.info(
-            "Building retrieval result for %s documents.",
+            "Building retrieval result for %d documents.",
             len(docs),
         )
 
@@ -541,7 +609,11 @@ def build_retrieval_result(
             source_documents=docs,
         )
 
-        logger.info("Retrieval result built successfully.")
+        logger.info(
+            "Retrieval result created successfully. " "Chunks=%d, Confidence=%.2f",
+            len(chunks),
+            retrieval_result.confidence,
+        )
 
         return retrieval_result
 
@@ -552,16 +624,31 @@ def build_retrieval_result(
         raise
 
 
-def calculate_confidence(docs):
+def calculate_confidence(docs) -> float:
     """
-    Calculate confidence score.
+    Calculate confidence based on:
+    1. Average vector similarity
+    2. Retrieval coverage
+    3. Metadata quality
+
+    Args:
+        docs (List[Document]): Retrieved documents.
+
+    Returns:
+        float: Confidence score between 0.0 and 1.0.
     """
 
     try:
 
-        logger.info("Calculating confidence score.")
+        logger.info(
+            "Calculating confidence score for %d documents.",
+            len(docs),
+        )
 
         if not docs:
+
+            logger.warning("No documents retrieved. Returning confidence score 0.0.")
+
             return 0.0
 
         distances = []
@@ -570,13 +657,53 @@ def calculate_confidence(docs):
 
             distance = doc.metadata.get("vector_distance")
 
-    # Weighted confidence
-    # confidence = similarity_score * 0.8 + retrieval_score * 0.2
-    coverage_score = min(len(docs), 2) / 2
+            if distance is not None:
+                distances.append(distance)
 
-            logger.info("No vector distances available. Returning default confidence.")
+        # Keyword search returned documents but no vector scores
+        if not distances:
+
+            logger.info(
+                "No vector distances found. Returning default confidence score 0.50."
+            )
 
             return 0.50
 
         avg_distance = sum(distances) / len(distances)
 
+        # Convert distance into similarity
+        similarity_score = 1 / (1 + avg_distance)
+
+        # Retrieval completeness
+        coverage_score = min(len(docs), 2) / 2
+
+        # Metadata completeness
+        metadata_score = sum(
+            1 for doc in docs if doc.metadata.get("section") != "N/A"
+        ) / len(docs)
+
+        confidence = (
+            similarity_score * 0.60 + coverage_score * 0.20 + metadata_score * 0.20
+        )
+
+        confidence = round(
+            min(confidence, 1.0),
+            2,
+        )
+
+        logger.info(
+            "Confidence calculated successfully. "
+            "Similarity=%.3f, Coverage=%.3f, Metadata=%.3f, Final=%.2f",
+            similarity_score,
+            coverage_score,
+            metadata_score,
+            confidence,
+        )
+
+        return confidence
+
+    except Exception:
+
+        logger.exception("tools.calculate_confidence failed.")
+
+        raise
