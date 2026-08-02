@@ -392,17 +392,26 @@ def extract_metadata_filters(query: str):
 
         query_upper = query.upper()
 
+        if "RBI CIRCULAR" in query_upper:
+            filters["regulation_type"] = "RBI"
+
+        elif "SEBI CIRCULAR" in query_upper:
+            filters["regulation_type"] = "SEBI"
+
+        """
         if "RBI" in query_upper:
             filters["regulation_type"] = "RBI"
 
         elif "SEBI" in query_upper:
             filters["regulation_type"] = "SEBI"
 
-        elif "BASEL" in query_upper:
-            filters["regulation_type"] = "Basel III"
+        # elif "BASEL" in query_upper:
+        #    filters["regulation_type"] = "Basel III"
 
         elif "AML" in query_upper:
             filters["regulation_type"] = "RBI / PMLA"
+
+        """
 
         logger.info(
             "Metadata filters extracted: %s",
@@ -435,7 +444,7 @@ def semantic_retriever_tool(query: str):
     try:
 
         logger.info(
-            "Executing semantic retriever tool. Query='%s'",
+            "Semantic retriever tool selected. Query='%s'",
             query,
         )
 
@@ -465,15 +474,31 @@ def semantic_retriever_tool(query: str):
 @tool
 def keyword_retriever_tool(query: str):
     """
-    Use when the question contains exact
-    regulation names, sections,
-    clauses, circular numbers,
-    or document titles.
+    Use this tool whenever the user mentions:
+    - regulation names
+    - policy names
+    - section numbers
+    - clause numbers
+    - defined terms
+    - specific compliance terminology
+
+    Examples:
+    - Basel III
+    - KYC Master Direction
+    - Section 4.2
+    - Capital Adequacy Ratio
+    - Customer Due Diligence
+
+    This tool performs exact regulatory terminology matching.
+
     """
 
     try:
 
-        logger.info("Executing keyword retriever tool.")
+        logger.info(
+            "Keyword tool selected. Query='%s'",
+            query,
+        )
 
         docs = keyword_search(query)
 
@@ -503,6 +528,10 @@ def hybrid_retriever_tool(query: str):
     """
 
     try:
+        logger.info(
+            "Hybrid  tool selected. Query='%s'",
+            query,
+        )
 
         docs = hybrid_search(query)
 

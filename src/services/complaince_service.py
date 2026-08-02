@@ -95,7 +95,7 @@ class ComplianceService:
                 answer=message,
                 citations=[],
                 rule_summary=[],
-                confidence_score=1.0,
+                confidence_score=0,
                 disclaimer="",
                 langsmith_trace_id="",
             )
